@@ -34,7 +34,7 @@ IM_HEIGHT = 480
 
 
 # ==============================================================================
-# -- functions -----------------------------------------------------------------
+# -- agent class ---------------------------------------------------------------
 # ==============================================================================
 
 class CarEnv:
@@ -73,14 +73,32 @@ class CarEnv:
         self.camera_spawn_point = carla.Transform(carla.Location(x=5, z=2))  # TODO: fine-tune these values!
         self.camera_sensor = self.world.spawn_actor(self.camera, self.camera_spawn_point, attach_to=self.vehicle)
         self.actor_list.append(self.camera_sensor)
-        self.camera_sensor.listen(lambda data: self.process_sensory_data(data))
+        self.camera_sensor.listen(lambda data: self.process_camera_sensory_data(data))
 
         self.vehicle.apply_control(carla.VehicleControl(throttle=0.0, steer=0.0))
         time.sleep(3)
 
-    def process_sensory_data(self, data):
+        # collision sensor
+        collison_sensor = self.blueprint_library.find("sensor.other.collision")
+        self.collision_sensor = self.world.spawn_actor(collison_sensor, self.camera_spawn_point, attach_to=self.vehicle)
+        self.actor_list.append(self.collision_sensor)
+        self.collision_sensor.listen(lambda event: self.process_collision_sensory_data(event))
+
+        while self.front_camera == None:
+            time.sleep(0.01)  # wait a little
+
+        self.episode_start = time.time()
+        self.vehicle.apply_control(carla.VehicleControl(throttle=0.0, steer=0.0))
+
+        return self.front_camera
+
+    def process_camera_sensory_data(self, data):
         data_arr = np.array(data.raw_data)
-        data_pic = data_arr.reshape((IM_HEIGHT, IM_WIDTH, 4))[:, :, :3]  # we only want rgb!
-        cv2.imshow("", data_pic)
-        cv2.waitKey(1)
-        return data_pic / 255.0  # normalizing sensory data for the neural network
+        data_pic = data_arr.reshape((self.im_height, self.im_width, 4))[:, :, :3]  # we only want rgb!
+        if self.SHOW_CAM:
+            cv2.imshow("", data_pic)
+            cv2.waitKey(1)
+        self.front_camera = data_pic
+
+    def process_collision_sensory_data(self, event):
+        self.collision_hist.append(event)  # add the accident to the list
