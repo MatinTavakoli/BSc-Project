@@ -5,6 +5,8 @@ Engine/*
 HDMaps/*
 PythonAPI/carla
 PythonAPI/util
+PythonAPI/examples/logs/*
+PythonAPI/examples/models/*
 CarlaUE4.exe
 CHANGELOG
 Dockerfile

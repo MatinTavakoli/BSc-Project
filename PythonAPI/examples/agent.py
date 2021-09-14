@@ -64,6 +64,7 @@ EPSILON_DECAY = 0.99
 MIN_EPSILON = 0.001
 AGGREGATE_STATE_EVERY = 10
 
+
 # ==============================================================================
 # -- customizing tensorboard ---------------------------------------------------
 # ==============================================================================
@@ -98,6 +99,7 @@ class ModifiedTensorBoard(TensorBoard):
     # Creates writer, writes custom metrics and closes writer
     def update_stats(self, **stats):
         self._write_logs(stats, self.step)
+
 
 # ==============================================================================
 # -- env class -----------------------------------------------------------------
@@ -141,7 +143,7 @@ class CarEnv:
         self.actor_list.append(self.camera_sensor)
         self.camera_sensor.listen(lambda data: self.process_camera_sensory_data(data))
 
-        self.vehicle.apply_control(carla.VehicleControl(throttle=0.0, steer=0.0))
+        self.vehicle.apply_control(carla.VehicleControl(throttle=0.0, brake=0.0))
         time.sleep(3)
 
         # collision sensor
@@ -150,11 +152,11 @@ class CarEnv:
         self.actor_list.append(self.collision_sensor)
         self.collision_sensor.listen(lambda event: self.process_collision_sensory_data(event))
 
-        while self.front_camera == None:
+        while self.front_camera is None:
             time.sleep(0.01)  # wait a little
 
         self.episode_start = time.time()
-        self.vehicle.apply_control(carla.VehicleControl(throttle=0.0, steer=0.0))
+        self.vehicle.apply_control(carla.VehicleControl(throttle=0.0, brake=0.0))
 
         return self.front_camera
 
@@ -281,7 +283,8 @@ class DQNAgent:
             self.last_logged_episode = self.tensorboard.step
 
         with self.graph.as_default():
-            self.model.fit(np.array(X) / 255, np.array(y), batch_size=TRAINING_BATCH_SIZE, verbose=0, shuffle=False, callbacks=[self.tensorboard] if log_this_step else None)
+            self.model.fit(np.array(X) / 255, np.array(y), batch_size=TRAINING_BATCH_SIZE, verbose=0, shuffle=False,
+                           callbacks=[self.tensorboard] if log_this_step else None)
 
         if log_this_step:
             self.target_update_counter += 1
@@ -307,11 +310,12 @@ class DQNAgent:
             self.train()
             time.sleep(0.01)
 
+
 if __name__ == "__main__":
     FPS = 20
     ep_rewards = [-100]
 
-    random.seed(1)
+    # random.seed(1)  # TODO: FIGURE OUT A BETTER SEED!
     np.random.seed(1)
     tf.set_random_seed(1)
 
@@ -366,11 +370,13 @@ if __name__ == "__main__":
             average_reward = sum(ep_rewards[-AGGREGATE_STATE_EVERY:]) / len(ep_rewards[-AGGREGATE_STATE_EVERY:])
             min_reward = min(ep_rewards[-AGGREGATE_STATE_EVERY:])
             max_reward = max(ep_rewards[-AGGREGATE_STATE_EVERY:])
-            agent.tensorboard.update_stats(reward_avg=average_reward, reward_min=min_reward, reward_max=max_reward, epsilon=EPSILON)
+            agent.tensorboard.update_stats(reward_avg=average_reward, reward_min=min_reward, reward_max=max_reward,
+                                           epsilon=EPSILON)
 
             # saving good models
             if min_reward >= MIN_REWARD:
-                agent.model.save(f'models/{MODEL_NAME}-{max_reward:7.2f}max-{average_reward:7.2f}avg-{min_reward:7.2f}min-{int(time.time())}')
+                agent.model.save(
+                    f'models/{MODEL_NAME}-{max_reward:7.2f}max-{average_reward:7.2f}avg-{min_reward:7.2f}min-{int(time.time())}')
 
         if EPSILON > MIN_EPSILON:
             EPSILON *= EPSILON_DECAY
@@ -378,4 +384,5 @@ if __name__ == "__main__":
 
     agent.terminate = True
     trainer_thread.join()
-    agent.model.save(f'models/{MODEL_NAME}-{max_reward:7.2f}max-{average_reward:7.2f}avg-{min_reward:7.2f}min-{int(time.time())}')
+    agent.model.save(
+        f'models/{MODEL_NAME}-{max_reward:7.2f}max-{average_reward:7.2f}avg-{min_reward:7.2f}min-{int(time.time())}')
