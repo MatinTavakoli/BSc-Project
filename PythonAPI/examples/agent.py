@@ -9,6 +9,7 @@ import sys
 import random
 import time
 import cv2
+import math
 
 # ==============================================================================
 # -- importing carla -----------------------------------------------------------
@@ -31,7 +32,7 @@ import carla
 SHOW_PREVIEW = False
 IM_WIDTH = 640
 IM_HEIGHT = 480
-
+EPISODE_LENGTH = 4
 
 # ==============================================================================
 # -- agent class ---------------------------------------------------------------
@@ -102,3 +103,38 @@ class CarEnv:
 
     def process_collision_sensory_data(self, event):
         self.collision_hist.append(event)  # add the accident to the list
+
+    def step(self, action):
+        if action == 0:
+            self.vehicle.apply_control(carla.VehicleControl(throttle=1.0, steer=-1 * self.STEER_AMT))
+
+        elif action == 1:
+            self.vehicle.apply_control(carla.VehicleControl(throttle=1.0, steer=0 * self.STEER_AMT))
+
+        if action == 2:
+            self.vehicle.apply_control(carla.VehicleControl(throttle=1.0, steer=1 * self.STEER_AMT))
+
+        v = self.vehicle.get_velocity()
+        kmh = int(3.6 * math.sqrt(v.x ** 2 + v.y ** 2 + v.z ** 2))
+
+        # TODO: change the conditions!
+
+        # if we had a crash
+        if len(self.collision_hist) != 0:
+            done = True
+            reward = -100
+
+        # the car is moving too slow
+        elif kmh < 50:
+            done = False
+            reward = -1
+
+        else:
+            done = False
+            reward = 1  # encourage the vehicle's performance!
+
+        #  terminating the episode (no reward)
+        if self.episode_start + EPISODE_LENGTH < time.time():
+            done = True
+
+        return self.front_camera, reward, done, None
