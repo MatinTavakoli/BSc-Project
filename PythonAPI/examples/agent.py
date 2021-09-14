@@ -12,14 +12,13 @@ import cv2
 import math
 from collections import deque
 
-# import tensorflow as tf
-from tensorflow import keras
 from keras.applications.xception import Xception
 from keras.layers import Dense, GlobalAveragePooling2D
 from keras.optimizers import Adam
 from keras.models import Model
 from keras.callbacks import TensorBoard
-import keras.backend.tensorflow_backend as backend
+from keras import backend
+import tensorflow as tf
 
 from threading import Thread
 from tqdm import tqdm
@@ -215,13 +214,13 @@ class DQNAgent:
     def __init__(self):
         self.model = self.create_model()
         self.target_model = self.create_model()
-        self.target_model.weights.set_weights(self.model.get_weights())
+        self.target_model.set_weights(self.model.get_weights())
 
         self.replay_memory = deque(maxlen=REPLAY_MEMORY_SIZE)
 
-        self.tensorboard = ModifiedTensorBoard(logdir='logs/{}-{}'.format(MODEL_NAME, int(time.time())))
+        self.tensorboard = ModifiedTensorBoard(log_dir='logs/{}-{}'.format(MODEL_NAME, int(time.time())))
         self.target_update_counter = 0
-        self.graph = tf.get_default_graph()
+        self.graph = tf.compat.v1.get_default_graph()
 
         self.terminate = False
         self.last_logged_episode = 0
@@ -297,7 +296,7 @@ class DQNAgent:
     def train_in_loop(self):
         X = np.random.uniform(size=(1, IM_HEIGHT, IM_WIDTH, 3)).astype(np.float32)
         y = np.random.uniform(size=(1, 3)).astype(np.float32)
-        with self.graph_as_default():
+        with self.graph.as_default():
             self.model.fit(X, y, verbose=0, batch_size=1)
 
         self.training_initialized = True
@@ -316,8 +315,8 @@ if __name__ == "__main__":
     np.random.seed(1)
     tf.set_random_seed(1)
 
-    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=MEMORY_FRACTION)
-    backend.set_session(tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)))
+    gpu_options = tf.compat.v1.GPUOptions(per_process_gpu_memory_fraction=MEMORY_FRACTION)
+    backend.set_session(tf.compat.v1.Session(config=tf.compat.v1.ConfigProto(gpu_options=gpu_options)))
 
     if not os.path.isdir("models"):
         os.makedirs("models")
