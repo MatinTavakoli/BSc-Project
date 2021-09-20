@@ -163,6 +163,7 @@ class CarEnv:
     def process_camera_sensory_data(self, data):
         data_arr = np.array(data.raw_data)
         data_pic = data_arr.reshape((self.im_height, self.im_width, 4))[:, :, :3]  # we only want rgb!
+        data_pic /= 255  # normalizing for the neural network
         if self.SHOW_CAM:
             cv2.imshow("", data_pic)
             cv2.waitKey(1)
@@ -251,15 +252,13 @@ class DQNAgent:
 
         # main model
         current_states = np.array([transition[0] for transition in minibatch])
-        current_states /= 255  # normalizing for the neural network
         with self.graph.as_default():
             current_qs_list = self.model.predict(current_states, PREDICTION_BATCH_SIZE)
 
         # target model
         new_current_states = np.array([transition[3] for transition in minibatch])
-        new_current_states /= 255  # normalizing for the neural network
         with self.graph.as_default():
-            future_qs_list = self.model.predict(new_current_states, PREDICTION_BATCH_SIZE)
+            future_qs_list = self.target_model.predict(new_current_states, PREDICTION_BATCH_SIZE)
 
         X = []
         y = []
@@ -283,7 +282,7 @@ class DQNAgent:
             self.last_logged_episode = self.tensorboard.step
 
         with self.graph.as_default():
-            self.model.fit(np.array(X) / 255, np.array(y), batch_size=TRAINING_BATCH_SIZE, verbose=0, shuffle=False,
+            self.model.fit(np.array(X), np.array(y), batch_size=TRAINING_BATCH_SIZE, verbose=0, shuffle=False,
                            callbacks=[self.tensorboard] if log_this_step else None)
 
         if log_this_step:
@@ -294,7 +293,7 @@ class DQNAgent:
             self.target_update_counter = 0
 
     def get_qs(self, state):
-        return self.model.predict(np.array(state).reshape(-1, *state.shape) / 255)[0]
+        return self.model.predict(np.array(state).reshape(-1, *state.shape))[0]
 
     def train_in_loop(self):
         X = np.random.uniform(size=(1, IM_HEIGHT, IM_WIDTH, 3)).astype(np.float32)
@@ -355,7 +354,7 @@ if __name__ == "__main__":
             new_state, reward, done, _ = env.step(action)
             episode_reward += reward
 
-            agent.update_replay_memory((current_state, action, new_state, reward, done))
+            agent.update_replay_memory((current_state, action, reward, new_state, done))
 
             step += 1
 
