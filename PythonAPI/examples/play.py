@@ -9,7 +9,7 @@ from keras.models import load_model
 from agent import CarEnv, MEMORY_FRACTION
 
 
-MODEL_PATH = 'models/Xception-  -2.00max-  -4.10avg-  -7.00min-1632169403'
+MODEL_PATH = 'models/64x3- -28.00max- -39.10avg- -45.00min-1632248423'
 
 if __name__ == '__main__':
 
@@ -24,7 +24,7 @@ if __name__ == '__main__':
     env = CarEnv()
 
     # For agent speed measurements - keeps last 60 frametimes
-    fps_counter = deque(maxlen=60)
+    fps_counter = deque(maxlen=20)
 
     # Initialize predictions - first prediction takes longer as of initialization that has to be done
     # It's better to do a first prediction then before we start iterating over episode steps
@@ -44,12 +44,12 @@ if __name__ == '__main__':
         # Loop over steps
         while True:
 
-            # For FPS counter
-            step_start = time.time()
-
             # Show current frame
             cv2.imshow(f'Agent - preview', current_state)
             cv2.waitKey(1)
+
+            # For FPS counter
+            step_start = time.time()
 
             # Predict an action based on current observation space
             qs = model.predict(np.array(current_state).reshape(-1, *current_state.shape)/255)[0]

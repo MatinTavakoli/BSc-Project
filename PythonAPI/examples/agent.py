@@ -13,9 +13,9 @@ import math
 from collections import deque
 
 from keras.applications.xception import Xception
-from keras.layers import Dense, GlobalAveragePooling2D
+from keras.layers import Dense, GlobalAveragePooling2D, Conv2D, Activation, AveragePooling2D, Flatten
 from keras.optimizers import Adam
-from keras.models import Model
+from keras.models import Model, Sequential
 from keras.callbacks import TensorBoard
 from keras import backend
 import tensorflow as tf
@@ -52,7 +52,7 @@ MINIBATCH_SIZE = 16
 PREDICTION_BATCH_SIZE = 1
 TRAINING_BATCH_SIZE = MINIBATCH_SIZE // 4
 UPDATE_TARGET_NETWORK_EVERY = 5
-MODEL_NAME = "Xception"
+MODEL_NAME = "64x3"
 
 MEMORY_FRACTION = 0.6
 MIN_REWARD = -100
@@ -163,10 +163,10 @@ class CarEnv:
     def process_camera_sensory_data(self, data):
         data_arr = np.array(data.raw_data, dtype=np.float64)
         data_pic = data_arr.reshape((self.im_height, self.im_width, 4))[:, :, :3]  # we only want rgb!
-        data_pic /= 255  # normalizing for the neural network
         if self.SHOW_CAM:
             cv2.imshow("", data_pic)
             cv2.waitKey(1)
+        data_pic /= 255  # normalizing for the neural network
         self.front_camera = data_pic
 
     def process_collision_sensory_data(self, event):
@@ -177,9 +177,9 @@ class CarEnv:
             self.vehicle.apply_control(carla.VehicleControl(throttle=1.0, steer=-1 * self.STEER_AMT))
 
         elif action == 1:
-            self.vehicle.apply_control(carla.VehicleControl(throttle=1.0, steer=0 * self.STEER_AMT))
+            self.vehicle.apply_control(carla.VehicleControl(throttle=1.0, steer=0))
 
-        if action == 2:
+        elif action == 2:
             self.vehicle.apply_control(carla.VehicleControl(throttle=1.0, steer=1 * self.STEER_AMT))
 
         v = self.vehicle.get_velocity()
@@ -230,14 +230,37 @@ class DQNAgent:
         self.training_initialized = False
 
     def create_model(self):
-        base_model = Xception(weights=None, include_top=False, input_shape=(IM_HEIGHT, IM_WIDTH, 3))
+        # base_model = Xception(weights=None, include_top=False, input_shape=(IM_HEIGHT, IM_WIDTH, 3))
+        #
+        # x = base_model.output
+        # x = GlobalAveragePooling2D()(x)
+        #
+        # predictions = Dense(3, activation="linear")(x)
+        # model = Model(inputs=base_model.input, outputs=predictions)
+        # model.compile(loss="mse", optimizer=Adam(lr=0.001), metrics=["accuracy"])
 
-        x = base_model.output
-        x = GlobalAveragePooling2D()(x)
+        model = Sequential()
 
-        predictions = Dense(3, activation="linear")(x)
-        model = Model(inputs=base_model.input, outputs=predictions)
+        model.add(Conv2D(64, (3, 3), input_shape=(IM_HEIGHT, IM_WIDTH, 3), padding='same'))
+        model.add(Activation('relu'))
+        model.add(AveragePooling2D(pool_size=(5, 5), strides=(3, 3), padding='same'))
+
+        model.add(Conv2D(64, (3, 3), padding='same'))
+        model.add(Activation('relu'))
+        model.add(AveragePooling2D(pool_size=(5, 5), strides=(3, 3), padding='same'))
+
+        model.add(Conv2D(64, (3, 3), padding='same'))
+        model.add(Activation('relu'))
+        model.add(AveragePooling2D(pool_size=(5, 5), strides=(3, 3), padding='same'))
+
+        model.add(Flatten())
+        # model.compile(loss="mse", optimizer=Adam(lr=0.001), metrics=["accuracy"])
+
+        x = model.output
+        predictions = Dense(3, activation='sigmoid')(x)
+        model = Model(input=model.input, output=predictions)
         model.compile(loss="mse", optimizer=Adam(lr=0.001), metrics=["accuracy"])
+
         return model
 
     def update_replay_memory(self, transition):
@@ -347,6 +370,7 @@ if __name__ == "__main__":
         while True:
             if np.random.random() > EPSILON:
                 action = np.argmax(agent.get_qs(current_state))
+
             else:
                 action = np.random.randint(0, 3)
                 time.sleep(1 / FPS)
