@@ -161,7 +161,7 @@ class CarEnv:
         return self.front_camera
 
     def process_camera_sensory_data(self, data):
-        data_arr = np.array(data.raw_data)
+        data_arr = np.array(data.raw_data, dtype=np.float64)
         data_pic = data_arr.reshape((self.im_height, self.im_width, 4))[:, :, :3]  # we only want rgb!
         data_pic /= 255  # normalizing for the neural network
         if self.SHOW_CAM:

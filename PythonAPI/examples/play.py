@@ -9,7 +9,7 @@ from keras.models import load_model
 from agent import CarEnv, MEMORY_FRACTION
 
 
-MODEL_PATH = 'models/Xception-  -2.00max-  -5.80avg- -13.00min-1631626873'
+MODEL_PATH = 'models/Xception-  -2.00max-  -4.10avg-  -7.00min-1632169403'
 
 if __name__ == '__main__':
 
