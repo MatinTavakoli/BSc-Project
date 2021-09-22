@@ -15,7 +15,7 @@ from collections import deque
 from keras.applications.xception import Xception
 from keras.layers import Dense, GlobalAveragePooling2D, Conv2D, Activation, AveragePooling2D, Flatten
 from keras.optimizers import Adam
-from keras.models import Model, Sequential
+from keras.models import Model, Sequential, load_model
 from keras.callbacks import TensorBoard
 from keras import backend
 import tensorflow as tf
@@ -45,19 +45,19 @@ SHOW_PREVIEW = False
 IM_WIDTH = 640
 IM_HEIGHT = 480
 
-EPISODE_LENGTH = 10
+EPISODE_LENGTH = 12
 REPLAY_MEMORY_SIZE = 5_000
 MIN_REPLAY_MEMORY_SIZE = 1_000
 MINIBATCH_SIZE = 16
 PREDICTION_BATCH_SIZE = 1
 TRAINING_BATCH_SIZE = MINIBATCH_SIZE // 4
 UPDATE_TARGET_NETWORK_EVERY = 5
-MODEL_NAME = "64x3"
+MODEL_NAME = "64x2(noturnv2)"
 
 MEMORY_FRACTION = 0.6
 MIN_REWARD = -100
 
-NUM_OF_EPISODES = 100
+NUM_OF_EPISODES = 75
 DISCOUNT = 0.99
 EPSILON = 1
 EPSILON_DECAY = 0.99
@@ -138,7 +138,7 @@ class CarEnv:
         self.camera.set_attribute("fov", "110")
 
         # spawn camera
-        self.camera_spawn_point = carla.Transform(carla.Location(x=5, z=2))  # TODO: fine-tune these values!
+        self.camera_spawn_point = carla.Transform(carla.Location(x=2, z=1))  # TODO: fine-tune these values!
         self.camera_sensor = self.world.spawn_actor(self.camera, self.camera_spawn_point, attach_to=self.vehicle)
         self.actor_list.append(self.camera_sensor)
         self.camera_sensor.listen(lambda data: self.process_camera_sensory_data(data))
@@ -173,17 +173,30 @@ class CarEnv:
         self.collision_hist.append(event)  # add the accident to the list
 
     def step(self, action):
+
+        # baseline actions
+        # if action == 0:
+        #     self.vehicle.apply_control(carla.VehicleControl(throttle=1.0, steer=-1 * self.STEER_AMT))
+        #
+        # elif action == 1:
+        #     self.vehicle.apply_control(carla.VehicleControl(throttle=1.0, steer=0))
+        #
+        # elif action == 2:
+        #     self.vehicle.apply_control(carla.VehicleControl(throttle=1.0, steer=1 * self.STEER_AMT))
+
+        # steer discourages actions
         if action == 0:
-            self.vehicle.apply_control(carla.VehicleControl(throttle=1.0, steer=-1 * self.STEER_AMT))
+            self.vehicle.apply_control(carla.VehicleControl(throttle=0.3, steer=-1 * self.STEER_AMT))
 
         elif action == 1:
             self.vehicle.apply_control(carla.VehicleControl(throttle=1.0, steer=0))
 
         elif action == 2:
-            self.vehicle.apply_control(carla.VehicleControl(throttle=1.0, steer=1 * self.STEER_AMT))
+            self.vehicle.apply_control(carla.VehicleControl(throttle=0.3, steer=1 * self.STEER_AMT))
 
         v = self.vehicle.get_velocity()
         kmh = int(3.6 * math.sqrt(v.x ** 2 + v.y ** 2 + v.z ** 2))
+        print('kmh is {}'.format(kmh))
 
         # TODO: change the conditions!
 
@@ -192,14 +205,19 @@ class CarEnv:
             done = True
             reward = -100
 
-        # the car is moving too slow
-        elif kmh < 50:
+        # # the car is moving too slow (baseline)
+        # elif kmh < 50:
+        #     done = False
+        #     reward = -1
+
+        # the car is moving too slow (discouraging running in circles even more!)
+        elif kmh < 10:
             done = False
-            reward = -1
+            reward = -5
 
         else:
             done = False
-            reward = 1  # encourage the vehicle's performance!
+            reward = 10  # encourage the vehicle's performance! # TODO: test noturnv3!
 
         #  terminating the episode (no reward)
         if self.episode_start + EPISODE_LENGTH < time.time():
@@ -221,7 +239,7 @@ class DQNAgent:
 
         self.replay_memory = deque(maxlen=REPLAY_MEMORY_SIZE)
 
-        self.tensorboard = ModifiedTensorBoard(log_dir='logs/{}-{}'.format(MODEL_NAME, int(time.time())))
+        self.tensorboard = ModifiedTensorBoard(log_dir='logs/{}-{}-{}-NEGATIVE{}'.format(MODEL_NAME, int(time.time()), NUM_OF_EPISODES, abs(MIN_REWARD)))
         self.target_update_counter = 0
         self.graph = tf.compat.v1.get_default_graph()
 
@@ -249,12 +267,11 @@ class DQNAgent:
         model.add(Activation('relu'))
         model.add(AveragePooling2D(pool_size=(5, 5), strides=(3, 3), padding='same'))
 
-        model.add(Conv2D(64, (3, 3), padding='same'))
-        model.add(Activation('relu'))
-        model.add(AveragePooling2D(pool_size=(5, 5), strides=(3, 3), padding='same'))
+        # model.add(Conv2D(64, (3, 3), padding='same'))
+        # model.add(Activation('relu'))
+        # model.add(AveragePooling2D(pool_size=(5, 5), strides=(3, 3), padding='same'))
 
         model.add(Flatten())
-        # model.compile(loss="mse", optimizer=Adam(lr=0.001), metrics=["accuracy"])
 
         x = model.output
         predictions = Dense(3, activation='sigmoid')(x)
@@ -357,6 +374,10 @@ if __name__ == "__main__":
         time.sleep(0.01)
 
     agent.get_qs(np.ones((env.im_height, env.im_width, 3)))
+    # # reloading (for debugging purposes)
+    # MODEL_PATH = 'models/64x2(reloaded)- -30.00max- -38.10avg- -48.00min-1632311799'
+    # # Load the model
+    # model = load_model(MODEL_PATH)
 
     for episode in tqdm(range(1, NUM_OF_EPISODES + 1), ascii=True, unit="episodes"):
         env.collision_hist = []
@@ -374,6 +395,8 @@ if __name__ == "__main__":
             else:
                 action = np.random.randint(0, 3)
                 time.sleep(1 / FPS)
+
+            print('action {} was selected'.format(action))
 
             new_state, reward, done, _ = env.step(action)
             episode_reward += reward

@@ -9,7 +9,7 @@ from keras.models import load_model
 from agent import CarEnv, MEMORY_FRACTION
 
 
-MODEL_PATH = 'models/64x3- -28.00max- -39.10avg- -45.00min-1632248423'
+MODEL_PATH = 'models/64x2(noturn)- -52.00max- -82.00avg--106.00min-1632316132'
 
 if __name__ == '__main__':
 
@@ -28,7 +28,7 @@ if __name__ == '__main__':
 
     # Initialize predictions - first prediction takes longer as of initialization that has to be done
     # It's better to do a first prediction then before we start iterating over episode steps
-    model.predict(np.ones((1, env.im_height, env.im_width, 3)))
+    # model.predict(np.ones((1, env.im_height, env.im_width, 3)))  # commented for debugging purposes
 
     # Loop over episodes
     while True:
@@ -52,8 +52,11 @@ if __name__ == '__main__':
             step_start = time.time()
 
             # Predict an action based on current observation space
-            qs = model.predict(np.array(current_state).reshape(-1, *current_state.shape)/255)[0]
-            action = np.argmax(qs)
+            print(current_state)
+            qs = model.predict(np.array(current_state).reshape(-1, *current_state.shape))[0]
+            print(qs)
+            # action = np.argmax(qs)
+            action = 1
 
             # Step environment (additional flag informs environment to not break an episode by time limit)
             new_state, reward, done, _ = env.step(action)
