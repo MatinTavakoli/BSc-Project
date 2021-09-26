@@ -6,7 +6,8 @@ import time
 import tensorflow as tf
 import keras.backend.tensorflow_backend as backend
 from keras.models import load_model
-from agent import CarEnv, MEMORY_FRACTION
+from PythonAPI.examples.car_env import CarEnv
+from PythonAPI.examples.train import MEMORY_FRACTION
 
 
 MODEL_PATH = 'models/64x2(noturn)- -52.00max- -82.00avg--106.00min-1632316132'
