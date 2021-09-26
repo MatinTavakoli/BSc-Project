@@ -12,7 +12,7 @@ from keras.layers import Dense, GlobalAveragePooling2D, Conv2D, Activation, Aver
 from keras.optimizers import Adam
 from keras.models import Model, Sequential, load_model
 import tensorflow as tf
-from PythonAPI.examples.ModifiedTensorBoard import ModifiedTensorBoard
+from ModifiedTensorBoard import ModifiedTensorBoard
 
 # ==============================================================================
 # -- constants -----------------------------------------------------------------

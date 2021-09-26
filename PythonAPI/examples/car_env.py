@@ -130,7 +130,6 @@ class CarEnv:
 
         v = self.vehicle.get_velocity()
         kmh = int(3.6 * math.sqrt(v.x ** 2 + v.y ** 2 + v.z ** 2))
-        print('kmh is {}'.format(kmh))
 
         # TODO: change the conditions!
 

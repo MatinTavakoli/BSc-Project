@@ -20,9 +20,9 @@ from tqdm import tqdm
 # ==============================================================================
 # -- importing agents ----------------------------------------------------------
 # ==============================================================================
-from PythonAPI.examples.car_env import CarEnv
-from PythonAPI.examples.dqn_agent import DQNAgent
-from PythonAPI.examples.sac_agent import *
+from car_env import CarEnv
+from dqn_agent import DQNAgent
+from sac_agent import *
 
 # ==============================================================================
 # -- importing carla -----------------------------------------------------------
@@ -47,12 +47,6 @@ IM_WIDTH = 640
 IM_HEIGHT = 480
 
 EPISODE_LENGTH = 12
-REPLAY_MEMORY_SIZE = 5_000
-MIN_REPLAY_MEMORY_SIZE = 1_000
-MINIBATCH_SIZE = 16
-PREDICTION_BATCH_SIZE = 1
-TRAINING_BATCH_SIZE = MINIBATCH_SIZE // 4
-UPDATE_TARGET_NETWORK_EVERY = 5
 
 MEMORY_FRACTION = 0.6
 MIN_REWARD = -100
@@ -69,7 +63,7 @@ if __name__ == "__main__":
     FPS = 20
     ep_rewards = [-100]
 
-    random.seed(10)  # TODO: FIGURE OUT A BETTER SEED!
+    # random.seed(10)  # TODO: FIGURE OUT A BETTER SEED!
     np.random.seed(10)
     tf.set_random_seed(10)
 
@@ -155,25 +149,25 @@ if __name__ == "__main__":
 
     elif mode == 2:
         while frame_idx < max_frames:
-            state = CarEnv.reset()
+            state = env.reset()
             episode_reward = 0
 
             for step in range(max_steps):
                 if frame_idx > 1000:
                     action = policy_net.get_action(state).detach()
-                    next_state, reward, done, _ = CarEnv.step(action)
+                    next_state, reward, done, _ = env.step(action)
                 else:
                     action = np.random.randint(0, 3)
-                    next_state, reward, done, _ = CarEnv.step(action)
+                    next_state, reward, done, _ = env.step(action)
 
-                replay_buffer.push(state, action, reward, next_state, done)
+                replay_memory.push(state, action, reward, next_state, done)
 
                 state = next_state
                 episode_reward += reward
                 frame_idx += 1
 
-                if len(replay_buffer) > batch_size:
-                    update(batch_size)
+                if len(replay_memory) > MINIBATCH_SIZE:
+                    update(MINIBATCH_SIZE)
 
                 if done:
                     break

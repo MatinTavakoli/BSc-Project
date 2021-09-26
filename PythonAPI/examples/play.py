@@ -6,7 +6,7 @@ import time
 import tensorflow as tf
 import keras.backend.tensorflow_backend as backend
 from keras.models import load_model
-from PythonAPI.examples.car_env import CarEnv
+from examples.car_env import CarEnv
 from PythonAPI.examples.train import MEMORY_FRACTION
 
 

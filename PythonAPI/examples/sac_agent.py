@@ -29,7 +29,7 @@ from tqdm import tqdm
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
 
-from PythonAPI.examples.car_env import CarEnv
+from car_env import CarEnv
 
 # ==============================================================================
 # -- constants -----------------------------------------------------------------
@@ -108,15 +108,16 @@ class SoftQNetwork(nn.Module):
     def __init__(self, num_inputs, num_actions, hidden_size, init_w=3e-3):
         super(SoftQNetwork, self).__init__()
 
-        self.linear1 = nn.Linear(num_inputs + num_actions, hidden_size)
+        self.linear1 = nn.Linear(num_inputs * num_actions, hidden_size)  # TODO: why is this addition?!
         self.linear2 = nn.Linear(hidden_size, hidden_size)
         self.linear3 = nn.Linear(hidden_size, 1)
 
         self.linear3.weight.data.uniform_(-init_w, init_w)
         self.linear3.bias.data.uniform_(-init_w, init_w)
 
-    def forward(self, state, action):
-        x = torch.cat([state, action], 1)
+    def forward(self, state, action):  # TODO: where is it used?
+        state = state.reshape(-1)  # added
+        x = torch.cat([state, action], -1)  # changed
         x = F.relu(self.linear1(x))
         x = F.relu(self.linear2(x))
         x = self.linear3(x)
@@ -222,7 +223,7 @@ def update(minibatch_size, gamma=0.99, soft_tau=1e-2, ):
 
 
 action_dim = 3  # TODO: make it 9!
-state_dim = (CarEnv.im_height, CarEnv.im_width, 3)
+state_dim = CarEnv.im_height * CarEnv.im_width * 3
 hidden_dim = 256
 
 value_net = ValueNetwork(state_dim, hidden_dim).to(device)
