@@ -136,7 +136,7 @@ if __name__ == "__main__":
                 # saving good models
                 if min_reward >= MIN_REWARD:
                     agent.model.save(
-                        f'models/{agent.MODEL_NAME}-{max_reward:7.2f}max-{average_reward:7.2f}avg-{min_reward:7.2f}min-{int(time.time())}')
+                        f'models/{agent.__class__.__name__}-{agent.MODEL_NAME}-{max_reward:7.2f}max-{average_reward:7.2f}avg-{min_reward:7.2f}min-{int(time.time())}')
 
             if EPSILON > MIN_EPSILON:
                 EPSILON *= EPSILON_DECAY
