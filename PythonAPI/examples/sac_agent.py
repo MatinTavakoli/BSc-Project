@@ -87,7 +87,7 @@ class ReplayMemory:
 # ==============================================================================
 
 class ValueNetwork(nn.Module):
-    def __init__(self, state_dim, hidden_dim, init_w=3e-3):
+    def __init__(self, state_dim, init_w=3e-3):
         super(ValueNetwork, self).__init__()
 
         # self.linear1 = nn.Linear(state_dim, hidden_dim)
@@ -99,10 +99,11 @@ class ValueNetwork(nn.Module):
 
         # pytorch (conv2d)
         self.conv1 = nn.Conv2d(3, 64, kernel_size=(5, 5), padding=0)
-        a = 480 - (5 - 1) / 2 - 2
         self.conv2 = nn.Conv2d(64, 64, kernel_size=(5, 5), padding=0)
         self.conv3 = nn.Conv2d(64, 64, kernel_size=(5, 5), padding=0)
-        self.fully = nn.Linear(247616, 1)  # TODO: don't hardcode this shit!
+        # self.conv2x_fully = nn.Linear(1123584, 1)  # TODO: don't hardcode this shit!
+        # self.conv3x_stride2_fully = nn.Linear(247616, 1)  # TODO: don't hardcode this shit!
+        self.conv3x_stride4_fully = nn.Linear(2560, 1)  # TODO: don't hardcode this shit!
 
     def forward(self, state):
         # x = F.relu(self.linear1(state))
@@ -110,7 +111,7 @@ class ValueNetwork(nn.Module):
         # x = self.linear3(x)
 
         # CNN
-        avgpool = nn.AvgPool2d(kernel_size=(5, 5), stride=(2, 2), padding=0)
+        avgpool = nn.AvgPool2d(kernel_size=(5, 5), stride=(4, 4), padding=0)
 
         x = F.relu(self.conv1(state))
         x = avgpool(x)
@@ -123,13 +124,13 @@ class ValueNetwork(nn.Module):
 
         x = torch.flatten(x, 1)
 
-        x = self.fully(x)
+        x = self.conv3x_stride4_fully(x)
 
         return x
 
 
 class SoftQNetwork(nn.Module):
-    def __init__(self, num_states, num_actions, hidden_size, init_w=3e-3):
+    def __init__(self, num_states, num_actions, init_w=3e-3):
         super(SoftQNetwork, self).__init__()
 
         # pytorch (linear)
@@ -144,7 +145,9 @@ class SoftQNetwork(nn.Module):
         self.conv1 = nn.Conv2d(3, 64, kernel_size=(5, 5), padding=0)
         self.conv2 = nn.Conv2d(64, 64, kernel_size=(5, 5), padding=0)
         self.conv3 = nn.Conv2d(64, 64, kernel_size=(5, 5), padding=0)
-        self.fully = nn.Linear(247616, num_actions)  # TODO: don't hardcode this shit!
+        # self.conv2x_fully = nn.Linear(1123584, num_actions)  # TODO: don't hardcode this shit!
+        # self.conv3x_stride2_fully = nn.Linear(247616, num_actions)  # TODO: don't hardcode this shit!
+        self.conv3x_stride4_fully = nn.Linear(2560, num_actions)  # TODO: don't hardcode this shit!
 
     def forward(self, state, action):
         # original
@@ -153,7 +156,7 @@ class SoftQNetwork(nn.Module):
         # x = self.linear3(x)
 
         # CNN
-        avgpool = nn.AvgPool2d(kernel_size=(5, 5), stride=(2, 2), padding=0)
+        avgpool = nn.AvgPool2d(kernel_size=(5, 5), stride=(4, 4), padding=0)
 
         x = F.relu(self.conv1(state))
         x = avgpool(x)
@@ -166,13 +169,13 @@ class SoftQNetwork(nn.Module):
 
         x = torch.flatten(x, 1)
 
-        x = self.fully(x)
+        x = self.conv3x_stride4_fully(x)
 
         return x
 
 
 class PolicyNetwork(nn.Module):
-    def __init__(self, num_inputs, num_actions, hidden_size, init_w=3e-3, log_std_min=-20, log_std_max=2):
+    def __init__(self, num_inputs, num_actions, init_w=3e-3, log_std_min=-20, log_std_max=2):
         super(PolicyNetwork, self).__init__()
 
         self.log_std_min = log_std_min
@@ -194,8 +197,14 @@ class PolicyNetwork(nn.Module):
         self.conv2 = nn.Conv2d(64, 64, kernel_size=(5, 5), padding=0)
         self.conv3 = nn.Conv2d(64, 64, kernel_size=(5, 5), padding=0)
 
-        self.mean_fully = nn.Linear(247616, num_actions)  # TODO: don't hardcode this shit!
-        self.log_std_fully = nn.Linear(247616, num_actions)  # TODO: don't hardcode this shit!
+        # self.conv2x_mean_fully = nn.Linear(1123584, num_actions)  # TODO: don't hardcode this shit!
+        # self.conv2x_log_std_fully = nn.Linear(1123584, num_actions)  # TODO: don't hardcode this shit!
+
+        # self.conv3x_stride2_mean_fully = nn.Linear(247616, num_actions)  # TODO: don't hardcode this shit!
+        # self.conv3x_stride2_log_std_fully = nn.Linear(247616, num_actions)  # TODO: don't hardcode this shit!
+
+        self.conv3x_stride4_mean_fully = nn.Linear(2560, num_actions)  # TODO: don't hardcode this shit!
+        self.conv3x_stride4_log_std_fully = nn.Linear(2560, num_actions)  # TODO: don't hardcode this shit!
 
     def forward(self, state):
         # x = F.relu(self.linear1(state))
@@ -206,7 +215,7 @@ class PolicyNetwork(nn.Module):
         # log_std = torch.clamp(log_std, self.log_std_min, self.log_std_max)
 
         # CNN
-        avgpool = nn.AvgPool2d(kernel_size=(5, 5), stride=(2, 2), padding=0)
+        avgpool = nn.AvgPool2d(kernel_size=(5, 5), stride=(4, 4), padding=0)
 
         x = F.relu(self.conv1(state))
         x = avgpool(x)
@@ -219,8 +228,8 @@ class PolicyNetwork(nn.Module):
 
         x = torch.flatten(x, 1)
 
-        mean = self.mean_fully(x)
-        log_std = self.log_std_fully(x)
+        mean = self.conv3x_stride4_mean_fully(x)
+        log_std = self.conv3x_stride4_log_std_fully(x)
 
         log_std = torch.clamp(log_std, self.log_std_min, self.log_std_max)
 
@@ -259,9 +268,9 @@ def update(minibatch_size, gamma=0.99, soft_tau=1e-2, ):
     done = torch.FloatTensor(np.float32(done)).unsqueeze(1).to(device)
 
     predicted_q_value1 = soft_q_net1(state, action)
-    predicted_q_value1 = predicted_q_value1.gather(1, action.view(-1, 1)).view(-1)
+    predicted_q_value1 = predicted_q_value1.gather(1, action.view(-1, 1)).view(-1).reshape(MINIBATCH_SIZE)
     predicted_q_value2 = soft_q_net2(state, action)
-    predicted_q_value2 = predicted_q_value2.gather(1, action.view(-1, 1)).view(-1)
+    predicted_q_value2 = predicted_q_value2.gather(1, action.view(-1, 1)).view(-1).reshape(MINIBATCH_SIZE)
 
     predicted_value = value_net(state)
 
@@ -282,7 +291,12 @@ def update(minibatch_size, gamma=0.99, soft_tau=1e-2, ):
     soft_q_optimizer2.step()
     # Training Value Function
     predicted_new_q_value = torch.min(soft_q_net1(state, new_action), soft_q_net2(state, new_action))
-    target_value_func = predicted_new_q_value - log_prob
+    target_value_func = (predicted_new_q_value - log_prob)
+    target_value_func = torch.mean(target_value_func, dim=1)  # mean added TODO: check with hossein => actions must be continuous
+    print(predicted_value.shape)
+    print(predicted_new_q_value.shape)
+    print(log_prob.shape)
+    print(target_value_func.shape)
     value_loss = value_criterion(predicted_value, target_value_func.detach())
 
     value_optimizer.zero_grad()
@@ -303,15 +317,14 @@ def update(minibatch_size, gamma=0.99, soft_tau=1e-2, ):
 
 state_dim = CarEnv.im_height * CarEnv.im_width * 3
 action_dim = 3  # TODO: make it 9!
-hidden_dim = 256
 
-value_net = ValueNetwork(state_dim, hidden_dim).to(device)
-target_value_net = ValueNetwork(state_dim, hidden_dim).to(device)
+value_net = ValueNetwork(state_dim).to(device)
+target_value_net = ValueNetwork(state_dim).to(device)
 
-soft_q_net1 = SoftQNetwork(state_dim, action_dim, hidden_dim).to(device)
-soft_q_net2 = SoftQNetwork(state_dim, action_dim, hidden_dim).to(device)
+soft_q_net1 = SoftQNetwork(state_dim, action_dim).to(device)
+soft_q_net2 = SoftQNetwork(state_dim, action_dim).to(device)
 
-policy_net = PolicyNetwork(state_dim, action_dim, hidden_dim).to(device)
+policy_net = PolicyNetwork(state_dim, action_dim).to(device)
 
 for target_param, param in zip(target_value_net.parameters(), value_net.parameters()):
     target_param.data.copy_(param.data)
