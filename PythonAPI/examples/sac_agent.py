@@ -268,16 +268,18 @@ def update(minibatch_size, gamma=0.99, soft_tau=1e-2, ):
     done = torch.FloatTensor(np.float32(done)).unsqueeze(1).to(device)
 
     predicted_q_value1 = soft_q_net1(state, action)
-    predicted_q_value1 = predicted_q_value1.gather(1, action.view(-1, 1)).view(-1).reshape(MINIBATCH_SIZE)
+    predicted_q_value1 = predicted_q_value1.gather(1, action.view(-1, 1)).view(-1)
     predicted_q_value2 = soft_q_net2(state, action)
-    predicted_q_value2 = predicted_q_value2.gather(1, action.view(-1, 1)).view(-1).reshape(MINIBATCH_SIZE)
+    predicted_q_value2 = predicted_q_value2.gather(1, action.view(-1, 1)).view(-1)
 
-    predicted_value = value_net(state)
+    predicted_value = value_net(state).reshape(MINIBATCH_SIZE)
 
     new_action, log_prob, epsilon, mean, log_std = policy_net.evaluate(state)
+    new_sample_actions = torch.multinomial(new_action, 1, replacement=True)  # sampling from float action probabilities
+    log_prob = log_prob.gather(1, new_sample_actions.view(-1, 1)).view(-1)
 
     # Training Q Function
-    target_value = target_value_net(next_state)
+    target_value = target_value_net(next_state).reshape(MINIBATCH_SIZE)
     target_q_value = reward + (1 - done) * gamma * target_value
 
     q_value_loss1 = soft_q_criterion1(predicted_q_value1, target_q_value.detach())
@@ -289,14 +291,16 @@ def update(minibatch_size, gamma=0.99, soft_tau=1e-2, ):
     soft_q_optimizer2.zero_grad()
     q_value_loss2.backward()
     soft_q_optimizer2.step()
+
     # Training Value Function
-    predicted_new_q_value = torch.min(soft_q_net1(state, new_action), soft_q_net2(state, new_action))
+    predicted_new_q_value = torch.min(soft_q_net1(state, new_action), soft_q_net2(state, new_action)).gather(1, new_sample_actions.view(-1, 1)).view(-1)
     target_value_func = (predicted_new_q_value - log_prob)
-    target_value_func = torch.mean(target_value_func, dim=1)  # mean added TODO: check with hossein => actions must be continuous
+
     print(predicted_value.shape)
     print(predicted_new_q_value.shape)
     print(log_prob.shape)
     print(target_value_func.shape)
+
     value_loss = value_criterion(predicted_value, target_value_func.detach())
 
     value_optimizer.zero_grad()
