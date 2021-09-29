@@ -13,6 +13,7 @@ import math
 
 from keras import backend
 import tensorflow as tf
+import torch
 
 from threading import Thread
 from tqdm import tqdm
@@ -53,7 +54,7 @@ DISCOUNT = 0.99
 EPSILON = 1
 EPSILON_DECAY = 0.99
 MIN_EPSILON = 0.001
-AGGREGATE_STATE_EVERY = 10
+AGGREGATE_STATE_EVERY = 1
 
 
 if __name__ == "__main__":
@@ -131,9 +132,9 @@ if __name__ == "__main__":
                                                epsilon=EPSILON)
 
                 # saving good models
-                # if min_reward >= agent.min_reward:
-                agent.model.save(
-                    f'models/{agent.__class__.__name__}-{agent.MODEL_NAME}-{max_reward:7.2f}max-{average_reward:7.2f}avg-{min_reward:7.2f}min-{int(time.time())}')
+                if min_reward >= agent.min_reward:
+                    agent.model.save(
+                        f'models/{agent.__class__.__name__}-{agent.MODEL_NAME}-{max_reward:7.2f}max-{average_reward:7.2f}avg-{min_reward:7.2f}min-{int(time.time())}')
 
             if EPSILON > MIN_EPSILON:
                 EPSILON *= EPSILON_DECAY
@@ -142,7 +143,7 @@ if __name__ == "__main__":
         agent.terminate = True
         trainer_thread.join()
         agent.model.save(
-            f'models/{agent.__class__.__name__}-{agent.MODEL_NAME}-{max_reward:7.2f}max-{average_reward:7.2f}avg-{min_reward:7.2f}min-{int(time.time())}')
+            f'models/{agent.__class__.__name__}/{agent.MODEL_NAME}-{max_reward:7.2f}max-{average_reward:7.2f}avg-{min_reward:7.2f}min-{int(time.time())}')
 
     elif mode == 2:
 
@@ -191,10 +192,10 @@ if __name__ == "__main__":
                 agent.tensorboard.update_stats(reward_avg=average_reward, reward_min=min_reward, reward_max=max_reward,
                                                epsilon=EPSILON)
 
-                # saving good models
-                if min_reward >= MIN_REWARD:
-                    agent.model.save(
-                        f'models/{agent.__class__.__name__}-{agent.MODEL_NAME}-{max_reward:7.2f}max-{average_reward:7.2f}avg-{min_reward:7.2f}min-{int(time.time())}')
+                # saving good policy models
+                # if min_reward >= MIN_REWARD:
+                torch.save(agent.policy_net.state_dict(),
+                    f'models/{agent.__class__.__name__}/{agent.model_name}-{max_reward:7.2f}max-{average_reward:7.2f}avg-{min_reward:7.2f}min-{int(time.time())}')
 
             if EPSILON > MIN_EPSILON:
                 EPSILON *= EPSILON_DECAY

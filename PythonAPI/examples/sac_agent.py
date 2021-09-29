@@ -41,8 +41,8 @@ MIN_REPLAY_MEMORY_SIZE = 2_000
 # PREDICTION_BATCH_SIZE = 1
 # TRAINING_BATCH_SIZE = MINIBATCH_SIZE // 4
 UPDATE_TARGET_NETWORK_EVERY = 10
-MODEL_NAME = "conv_nn"
 
+MODEL_NAME = "conv_nn"
 NUM_OF_EPISODES = 10
 MINIBATCH_SIZE = 32
 MIN_REWARD = -100
@@ -56,6 +56,7 @@ DISCOUNT = 0.99
 class SACAgent:
 
     def __init__(self):
+        self.model_name = MODEL_NAME
         self.num_of_episodes = NUM_OF_EPISODES
         self.minibatch_size = MINIBATCH_SIZE
         self.min_reward = MIN_REWARD
