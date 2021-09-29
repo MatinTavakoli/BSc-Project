@@ -46,12 +46,9 @@ SHOW_PREVIEW = False
 IM_WIDTH = 640
 IM_HEIGHT = 480
 
-EPISODE_LENGTH = 12
-
 MEMORY_FRACTION = 0.6
 MIN_REWARD = -100
 
-NUM_OF_EPISODES = 75
 DISCOUNT = 0.99
 EPSILON = 1
 EPSILON_DECAY = 0.99
@@ -93,7 +90,7 @@ if __name__ == "__main__":
         # # Load the model
         # model = load_model(MODEL_PATH)
 
-        for episode in tqdm(range(1, NUM_OF_EPISODES + 1), ascii=True, unit="episodes"):
+        for episode in tqdm(range(1, agent.NUM_OF_EPISODES + 1), ascii=True, unit="episodes"):
             env.collision_hist = []
             agent.tensorboard.step = episode
             episode_reward = 0
@@ -134,9 +131,9 @@ if __name__ == "__main__":
                                                epsilon=EPSILON)
 
                 # saving good models
-                if min_reward >= MIN_REWARD:
-                    agent.model.save(
-                        f'models/{agent.__class__.__name__}-{agent.MODEL_NAME}-{max_reward:7.2f}max-{average_reward:7.2f}avg-{min_reward:7.2f}min-{int(time.time())}')
+                # if min_reward >= agent.min_reward:
+                agent.model.save(
+                    f'models/{agent.__class__.__name__}-{agent.MODEL_NAME}-{max_reward:7.2f}max-{average_reward:7.2f}avg-{min_reward:7.2f}min-{int(time.time())}')
 
             if EPSILON > MIN_EPSILON:
                 EPSILON *= EPSILON_DECAY
@@ -145,31 +142,60 @@ if __name__ == "__main__":
         agent.terminate = True
         trainer_thread.join()
         agent.model.save(
-            f'models/{agent.MODEL_NAME}-{max_reward:7.2f}max-{average_reward:7.2f}avg-{min_reward:7.2f}min-{int(time.time())}')
+            f'models/{agent.__class__.__name__}-{agent.MODEL_NAME}-{max_reward:7.2f}max-{average_reward:7.2f}avg-{min_reward:7.2f}min-{int(time.time())}')
 
     elif mode == 2:
-        while frame_idx < max_frames:
-            state = env.reset()
-            episode_reward = 0
 
-            for step in range(max_steps):
-                if frame_idx > 1000:
-                    action = policy_net.get_action(state).detach()
-                    next_state, reward, done, _ = env.step(action)
+        agent = SACAgent()
+
+        for episode in tqdm(range(1, agent.num_of_episodes + 1), ascii=True, unit="episodes"):
+            env.collision_hist = []
+            agent.tensorboard.step = episode
+            episode_reward = 0
+            step = 1
+            state = env.reset()
+            done = False
+            episode_start = time.time()
+
+            while True:
+                if np.random.random() > EPSILON:
+                    action = agent.policy_net.get_action(state).detach()
+
                 else:
                     action = np.random.randint(0, 3)
-                    next_state, reward, done, _ = env.step(action)
+                    time.sleep(1 / FPS)
 
-                replay_memory.push(state, action, reward, next_state, done)
+                next_state, reward, done, _ = env.step(action)
+
+                agent.replay_memory.push(state, action, reward, next_state, done)
 
                 state = next_state
                 episode_reward += reward
-                frame_idx += 1
 
-                if len(replay_memory) > MINIBATCH_SIZE:
-                    update(MINIBATCH_SIZE)
+                if len(agent.replay_memory) > agent.minibatch_size:
+                    agent.update(agent.minibatch_size)
 
                 if done:
                     break
 
-            rewards.append(episode_reward)
+            for actor in env.actor_list:
+                actor.destroy()
+
+            print('episode {} complete'.format(episode))
+
+            ep_rewards.append(episode_reward)
+            if not episode % AGGREGATE_STATE_EVERY or episode == 1:
+                average_reward = sum(ep_rewards[-AGGREGATE_STATE_EVERY:]) / len(ep_rewards[-AGGREGATE_STATE_EVERY:])
+                min_reward = min(ep_rewards[-AGGREGATE_STATE_EVERY:])
+                max_reward = max(ep_rewards[-AGGREGATE_STATE_EVERY:])
+                agent.tensorboard.update_stats(reward_avg=average_reward, reward_min=min_reward, reward_max=max_reward,
+                                               epsilon=EPSILON)
+
+                # saving good models
+                if min_reward >= MIN_REWARD:
+                    agent.model.save(
+                        f'models/{agent.__class__.__name__}-{agent.MODEL_NAME}-{max_reward:7.2f}max-{average_reward:7.2f}avg-{min_reward:7.2f}min-{int(time.time())}')
+
+            if EPSILON > MIN_EPSILON:
+                EPSILON *= EPSILON_DECAY
+                EPSILON = max(MIN_EPSILON, EPSILON)

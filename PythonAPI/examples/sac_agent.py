@@ -22,6 +22,7 @@ from keras.models import Model, Sequential, load_model
 from keras.callbacks import TensorBoard
 from keras import backend
 import tensorflow as tf
+from ModifiedTensorBoard import ModifiedTensorBoard
 
 from threading import Thread
 from tqdm import tqdm
@@ -37,16 +38,15 @@ from car_env import CarEnv
 
 REPLAY_MEMORY_SIZE = 10_000
 MIN_REPLAY_MEMORY_SIZE = 2_000
-MINIBATCH_SIZE = 32
-PREDICTION_BATCH_SIZE = 1
-TRAINING_BATCH_SIZE = MINIBATCH_SIZE // 4
+# PREDICTION_BATCH_SIZE = 1
+# TRAINING_BATCH_SIZE = MINIBATCH_SIZE // 4
 UPDATE_TARGET_NETWORK_EVERY = 10
-MODEL_NAME = "simple_nn"
+MODEL_NAME = "conv_nn"
 
-max_frames = 40000
-max_steps = 500
-frame_idx = 0
-rewards = []
+NUM_OF_EPISODES = 10
+MINIBATCH_SIZE = 32
+MIN_REWARD = -100
+DISCOUNT = 0.99
 
 
 # ==============================================================================
@@ -54,36 +54,108 @@ rewards = []
 # ==============================================================================
 
 class SACAgent:
-    pass
 
+    def __init__(self):
+        self.num_of_episodes = NUM_OF_EPISODES
+        self.minibatch_size = MINIBATCH_SIZE
+        self.min_reward = MIN_REWARD
+
+        state_dim = CarEnv.im_height * CarEnv.im_width * 3
+        action_dim = 3  # TODO: make it 9!
+
+        self.value_net = ValueNetwork(state_dim).to(device)
+        self.target_value_net = ValueNetwork(state_dim).to(device)
+
+        self.soft_q_net1 = SoftQNetwork(state_dim, action_dim).to(device)
+        self.soft_q_net2 = SoftQNetwork(state_dim, action_dim).to(device)
+
+        self.policy_net = PolicyNetwork(state_dim, action_dim).to(device)
+
+        for target_param, param in zip(self.target_value_net.parameters(), self.value_net.parameters()):
+            target_param.data.copy_(param.data)
+
+        self.value_criterion = nn.MSELoss()
+        self.soft_q_criterion1 = nn.MSELoss()
+        self.soft_q_criterion2 = nn.MSELoss()
+
+        value_lr = 3e-4
+        soft_q_lr = 3e-4
+        policy_lr = 3e-4
+
+        self.value_optimizer = optim.Adam(self.value_net.parameters(), lr=value_lr)
+        self.soft_q_optimizer1 = optim.Adam(self.soft_q_net1.parameters(), lr=soft_q_lr)
+        self.soft_q_optimizer2 = optim.Adam(self.soft_q_net2.parameters(), lr=soft_q_lr)
+        self.policy_optimizer = optim.Adam(self.policy_net.parameters(), lr=policy_lr)
+
+        self.replay_memory = ReplayMemory(REPLAY_MEMORY_SIZE)
+        self.tensorboard = ModifiedTensorBoard(
+            log_dir='logs/{}-{}-{}-NEGATIVE{}'.format(MODEL_NAME, int(time.time()), self.num_of_episodes,
+                                                      abs(MIN_REWARD)))
+
+    def update(self, minibatch_size, gamma=0.99, soft_tau=1e-2, ):
+        state, action, reward, next_state, done = self.replay_memory.sample(minibatch_size)
+
+        state = torch.FloatTensor(state).to(device).permute(0, 3, 1, 2)  # permutation needed for conv2d
+        next_state = torch.FloatTensor(next_state).to(device).permute(0, 3, 1, 2)  # permutation needed for conv2d
+        action = torch.IntTensor(action).to(device).type(torch.int64)
+        reward = torch.FloatTensor(reward).unsqueeze(1).to(device)
+        done = torch.FloatTensor(np.float32(done)).unsqueeze(1).to(device)
+
+        predicted_q_value1 = self.soft_q_net1(state, action)
+        predicted_q_value1 = predicted_q_value1.gather(1, action.view(-1, 1)).view(-1)
+        predicted_q_value2 = self.soft_q_net2(state, action)
+        predicted_q_value2 = predicted_q_value2.gather(1, action.view(-1, 1)).view(-1)
+
+        predicted_value = self.value_net(state).reshape(self.minibatch_size)
+
+        new_action, log_prob, epsilon, mean, log_std = self.policy_net.evaluate(state)
+        new_action = (
+                             new_action + 1) / 2  # due to tanh activation, need to bring it in the (0, 1) interval (TODO: is this a bunch of bull?!)
+        new_sample_actions = torch.multinomial(new_action, 1,
+                                               replacement=True)  # sampling from float action probabilities
+        log_prob = log_prob.gather(1, new_sample_actions.view(-1, 1)).view(-1)
+
+        # Training Q Function
+        target_value = self.target_value_net(next_state)
+        target_q_value = (reward + (1 - done) * gamma * target_value).reshape(self.minibatch_size)
+
+        q_value_loss1 = self.soft_q_criterion1(predicted_q_value1, target_q_value.detach())
+        q_value_loss2 = self.soft_q_criterion2(predicted_q_value2, target_q_value.detach())
+
+        self.soft_q_optimizer1.zero_grad()
+        q_value_loss1.backward()
+        self.soft_q_optimizer1.step()
+        self.soft_q_optimizer2.zero_grad()
+        q_value_loss2.backward()
+        self.soft_q_optimizer2.step()
+
+        # Training Value Function
+        predicted_new_q_value = torch.min(self.soft_q_net1(state, new_action), self.soft_q_net2(state, new_action)).gather(1,
+                                                                                                                 new_sample_actions.view(
+                                                                                                                     -1,
+                                                                                                                     1)).view(
+            -1)
+        target_value_func = (predicted_new_q_value - log_prob)
+
+        value_loss = self.value_criterion(predicted_value, target_value_func.detach())
+
+        self.value_optimizer.zero_grad()
+        value_loss.backward()
+        self.value_optimizer.step()
+        # Training Policy Function
+        policy_loss = (log_prob - predicted_new_q_value).mean()
+
+        self.policy_optimizer.zero_grad()
+        policy_loss.backward()
+        self.policy_optimizer.step()
+
+        for target_param, param in zip(self.target_value_net.parameters(), self.value_net.parameters()):
+            target_param.data.copy_(
+                target_param.data * (1.0 - soft_tau) + param.data * soft_tau
+            )
 
 # ==============================================================================
-# -- replay buffer class --------------------------------------------------------
-# ==============================================================================
-
-class ReplayMemory:
-    def __init__(self, capacity):
-        self.capacity = capacity
-        self.buffer = []
-        self.position = 0
-
-    def push(self, state, action, reward, next_state, done):
-        if len(self.buffer) < self.capacity:
-            self.buffer.append(None)
-        self.buffer[self.position] = (state, action, reward, next_state, done)
-        self.position = (self.position + 1) % self.capacity
-
-    def sample(self, minibatch_size):
-        batch = random.sample(self.buffer, minibatch_size)
-        state, action, reward, next_state, done = map(np.stack, zip(*batch))
-        return state, action, reward, next_state, done
-
-    def __len__(self):
-        return len(self.buffer)
-
-
-# ==============================================================================
-# -- network classes TODO: make it convolutional!-------------------------------
+# -- network classes -----------------------------------------------------------
 # ==============================================================================
 
 class ValueNetwork(nn.Module):
@@ -257,93 +329,26 @@ class PolicyNetwork(nn.Module):
         action = action.cpu()  # .detach().cpu().numpy()
         return action[0]
 
+# ==============================================================================
+# -- replay buffer class --------------------------------------------------------
+# ==============================================================================
 
-def update(minibatch_size, gamma=0.99, soft_tau=1e-2, ):
-    state, action, reward, next_state, done = replay_memory.sample(minibatch_size)
+class ReplayMemory:
+    def __init__(self, capacity):
+        self.capacity = capacity
+        self.buffer = []
+        self.position = 0
 
-    state = torch.FloatTensor(state).to(device).permute(0, 3, 1, 2)  # permutation needed for conv2d
-    next_state = torch.FloatTensor(next_state).to(device).permute(0, 3, 1, 2)  # permutation needed for conv2d
-    action = torch.IntTensor(action).to(device).type(torch.int64)
-    reward = torch.FloatTensor(reward).unsqueeze(1).to(device)
-    done = torch.FloatTensor(np.float32(done)).unsqueeze(1).to(device)
+    def push(self, state, action, reward, next_state, done):
+        if len(self.buffer) < self.capacity:
+            self.buffer.append(None)
+        self.buffer[self.position] = (state, action, reward, next_state, done)
+        self.position = (self.position + 1) % self.capacity
 
-    predicted_q_value1 = soft_q_net1(state, action)
-    predicted_q_value1 = predicted_q_value1.gather(1, action.view(-1, 1)).view(-1)
-    predicted_q_value2 = soft_q_net2(state, action)
-    predicted_q_value2 = predicted_q_value2.gather(1, action.view(-1, 1)).view(-1)
+    def sample(self, minibatch_size):
+        batch = random.sample(self.buffer, minibatch_size)
+        state, action, reward, next_state, done = map(np.stack, zip(*batch))
+        return state, action, reward, next_state, done
 
-    predicted_value = value_net(state).reshape(MINIBATCH_SIZE)
-
-    new_action, log_prob, epsilon, mean, log_std = policy_net.evaluate(state)
-    new_sample_actions = torch.multinomial(new_action, 1, replacement=True)  # sampling from float action probabilities
-    log_prob = log_prob.gather(1, new_sample_actions.view(-1, 1)).view(-1)
-
-    # Training Q Function
-    target_value = target_value_net(next_state).reshape(MINIBATCH_SIZE)
-    target_q_value = reward + (1 - done) * gamma * target_value
-
-    q_value_loss1 = soft_q_criterion1(predicted_q_value1, target_q_value.detach())
-    q_value_loss2 = soft_q_criterion2(predicted_q_value2, target_q_value.detach())
-
-    soft_q_optimizer1.zero_grad()
-    q_value_loss1.backward()
-    soft_q_optimizer1.step()
-    soft_q_optimizer2.zero_grad()
-    q_value_loss2.backward()
-    soft_q_optimizer2.step()
-
-    # Training Value Function
-    predicted_new_q_value = torch.min(soft_q_net1(state, new_action), soft_q_net2(state, new_action)).gather(1, new_sample_actions.view(-1, 1)).view(-1)
-    target_value_func = (predicted_new_q_value - log_prob)
-
-    print(predicted_value.shape)
-    print(predicted_new_q_value.shape)
-    print(log_prob.shape)
-    print(target_value_func.shape)
-
-    value_loss = value_criterion(predicted_value, target_value_func.detach())
-
-    value_optimizer.zero_grad()
-    value_loss.backward()
-    value_optimizer.step()
-    # Training Policy Function
-    policy_loss = (log_prob - predicted_new_q_value).mean()
-
-    policy_optimizer.zero_grad()
-    policy_loss.backward()
-    policy_optimizer.step()
-
-    for target_param, param in zip(target_value_net.parameters(), value_net.parameters()):
-        target_param.data.copy_(
-            target_param.data * (1.0 - soft_tau) + param.data * soft_tau
-        )
-
-
-state_dim = CarEnv.im_height * CarEnv.im_width * 3
-action_dim = 3  # TODO: make it 9!
-
-value_net = ValueNetwork(state_dim).to(device)
-target_value_net = ValueNetwork(state_dim).to(device)
-
-soft_q_net1 = SoftQNetwork(state_dim, action_dim).to(device)
-soft_q_net2 = SoftQNetwork(state_dim, action_dim).to(device)
-
-policy_net = PolicyNetwork(state_dim, action_dim).to(device)
-
-for target_param, param in zip(target_value_net.parameters(), value_net.parameters()):
-    target_param.data.copy_(param.data)
-
-value_criterion = nn.MSELoss()
-soft_q_criterion1 = nn.MSELoss()
-soft_q_criterion2 = nn.MSELoss()
-
-value_lr = 3e-4
-soft_q_lr = 3e-4
-policy_lr = 3e-4
-
-value_optimizer = optim.Adam(value_net.parameters(), lr=value_lr)
-soft_q_optimizer1 = optim.Adam(soft_q_net1.parameters(), lr=soft_q_lr)
-soft_q_optimizer2 = optim.Adam(soft_q_net2.parameters(), lr=soft_q_lr)
-policy_optimizer = optim.Adam(policy_net.parameters(), lr=policy_lr)
-
-replay_memory = ReplayMemory(REPLAY_MEMORY_SIZE)
+    def __len__(self):
+        return len(self.buffer)
