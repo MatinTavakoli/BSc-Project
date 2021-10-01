@@ -50,12 +50,11 @@ IM_HEIGHT = 480
 MEMORY_FRACTION = 0.6
 MIN_REWARD = -100
 
-DISCOUNT = 0.99
-EPSILON = 1
-EPSILON_DECAY = 0.99
-MIN_EPSILON = 0.001
+DISCOUNT = 0.9
+EPSILON = 0.8
+EPSILON_DECAY = 0.9
+MIN_EPSILON = 0.01
 AGGREGATE_STATE_EVERY = 1
-
 
 if __name__ == "__main__":
     FPS = 20
@@ -160,10 +159,13 @@ if __name__ == "__main__":
 
             while True:
                 if np.random.random() > EPSILON:
-                    action = agent.policy_net.get_action(state).detach()
+                    action_dist = agent.policy_net.get_action(state).detach()
+                    action = np.argmax(action_dist)
+                    print('action selected from policy')
 
                 else:
                     action = np.random.randint(0, 3)
+                    print('action selected randomly')
                     time.sleep(1 / FPS)
 
                 next_state, reward, done, _ = env.step(action)
@@ -192,10 +194,13 @@ if __name__ == "__main__":
                 agent.tensorboard.update_stats(reward_avg=average_reward, reward_min=min_reward, reward_max=max_reward,
                                                epsilon=EPSILON)
 
-                # saving good policy models
+                # saving good models
                 # if min_reward >= MIN_REWARD:
-                torch.save(agent.policy_net.state_dict(),
-                    f'models/{agent.__class__.__name__}/{agent.model_name}-{max_reward:7.2f}max-{average_reward:7.2f}avg-{min_reward:7.2f}min-{int(time.time())}')
+                torch.save(agent.value_net.state_dict(), f'models/{agent.__class__.__name__}/{agent.model_name}-value_net-{max_reward:7.2f}max-{average_reward:7.2f}avg-{min_reward:7.2f}min-{int(time.time())}')
+                torch.save(agent.target_value_net.state_dict(), f'models/{agent.__class__.__name__}/{agent.model_name}-target_value_net-{max_reward:7.2f}max-{average_reward:7.2f}avg-{min_reward:7.2f}min-{int(time.time())}')
+                torch.save(agent.soft_q_net1.state_dict(), f'models/{agent.__class__.__name__}/{agent.model_name}-soft_q_net1-{max_reward:7.2f}max-{average_reward:7.2f}avg-{min_reward:7.2f}min-{int(time.time())}')
+                torch.save(agent.soft_q_net2.state_dict(), f'models/{agent.__class__.__name__}/{agent.model_name}-soft_q_net2-{max_reward:7.2f}max-{average_reward:7.2f}avg-{min_reward:7.2f}min-{int(time.time())}')
+                torch.save(agent.policy_net.state_dict(), f'models/{agent.__class__.__name__}/{agent.model_name}-policy_net-{max_reward:7.2f}max-{average_reward:7.2f}avg-{min_reward:7.2f}min-{int(time.time())}')
 
             if EPSILON > MIN_EPSILON:
                 EPSILON *= EPSILON_DECAY

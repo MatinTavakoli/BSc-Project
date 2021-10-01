@@ -40,9 +40,9 @@ REPLAY_MEMORY_SIZE = 10_000
 MIN_REPLAY_MEMORY_SIZE = 2_000
 # PREDICTION_BATCH_SIZE = 1
 # TRAINING_BATCH_SIZE = MINIBATCH_SIZE // 4
-UPDATE_TARGET_NETWORK_EVERY = 10
+UPDATE_TARGET_NETWORK_EVERY = 5
 
-MODEL_NAME = "conv_nn"
+MODEL_NAME = "conv_nn_(simple_reward)"
 NUM_OF_EPISODES = 10
 MINIBATCH_SIZE = 32
 MIN_REWARD = -100
@@ -319,7 +319,7 @@ class PolicyNetwork(nn.Module):
         return action, log_prob, z, mean, log_std
 
     def get_action(self, state):
-        state = torch.FloatTensor(state).unsqueeze(0).to(device)
+        state = torch.FloatTensor(state).unsqueeze(0).to(device).permute(0, 3, 1, 2)  # permutation needed for conv2d
         mean, log_std = self.forward(state)
         std = log_std.exp()
 
