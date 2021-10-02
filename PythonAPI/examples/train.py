@@ -90,7 +90,7 @@ if __name__ == "__main__":
         # # Load the model
         # model = load_model(MODEL_PATH)
 
-        for episode in tqdm(range(1, agent.NUM_OF_EPISODES + 1), ascii=True, unit="episodes"):
+        for episode in tqdm(range(1, agent.num_of_episodes + 1), ascii=True, unit="episodes"):
             env.collision_hist = []
             agent.tensorboard.step = episode
             episode_reward = 0
@@ -133,7 +133,7 @@ if __name__ == "__main__":
                 # saving good models
                 if min_reward >= agent.min_reward:
                     agent.model.save(
-                        f'models/{agent.__class__.__name__}-{agent.MODEL_NAME}-{max_reward:7.2f}max-{average_reward:7.2f}avg-{min_reward:7.2f}min-{int(time.time())}')
+                        f'models/{agent.__class__.__name__}/{agent.model_name}-{max_reward:7.2f}max-{average_reward:7.2f}avg-{min_reward:7.2f}min-{int(time.time())}')
 
             if EPSILON > MIN_EPSILON:
                 EPSILON *= EPSILON_DECAY
@@ -142,11 +142,20 @@ if __name__ == "__main__":
         agent.terminate = True
         trainer_thread.join()
         agent.model.save(
-            f'models/{agent.__class__.__name__}/{agent.MODEL_NAME}-{max_reward:7.2f}max-{average_reward:7.2f}avg-{min_reward:7.2f}min-{int(time.time())}')
+            f'models/{agent.__class__.__name__}/{agent.model_name}-{max_reward:7.2f}max-{average_reward:7.2f}avg-{min_reward:7.2f}min-{int(time.time())}')
 
     elif mode == 2:
 
         agent = SACAgent()
+        stack_train = True
+
+        # loading pretrained models from previous runs
+        if stack_train:
+            agent.value_net.load_state_dict(torch.load('models/SACAgent/conv_nn_(simple_reward)-value_net- -10.00max- -10.00avg- -10.00min-1633096246'))
+            agent.target_value_net.load_state_dict(torch.load('models/SACAgent/conv_nn_(simple_reward)-target_value_net- -10.00max- -10.00avg- -10.00min-1633096246'))
+            agent.soft_q_net1.load_state_dict(torch.load('models/SACAgent/conv_nn_(simple_reward)-soft_q_net1- -10.00max- -10.00avg- -10.00min-1633096246'))
+            agent.soft_q_net2.load_state_dict(torch.load('models/SACAgent/conv_nn_(simple_reward)-soft_q_net2- -10.00max- -10.00avg- -10.00min-1633096246'))
+            agent.policy_net.load_state_dict(torch.load('models/SACAgent/conv_nn_(simple_reward)-policy_net- -10.00max- -10.00avg- -10.00min-1633096246'))
 
         for episode in tqdm(range(1, agent.num_of_episodes + 1), ascii=True, unit="episodes"):
             env.collision_hist = []
@@ -161,11 +170,11 @@ if __name__ == "__main__":
                 if np.random.random() > EPSILON:
                     action_dist = agent.policy_net.get_action(state).detach()
                     action = np.argmax(action_dist)
-                    print('action selected from policy')
+                    # print('action selected from policy')
 
                 else:
                     action = np.random.randint(0, 3)
-                    print('action selected randomly')
+                    # print('action selected randomly')
                     time.sleep(1 / FPS)
 
                 next_state, reward, done, _ = env.step(action)

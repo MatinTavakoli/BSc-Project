@@ -11,8 +11,8 @@ from sac_agent import *
 from train import MEMORY_FRACTION
 
 
-# MODEL_PATH = 'models/64x2(noturn)- -52.00max- -82.00avg--106.00min-1632316132'
-MODEL_PATH = 'models/SACAgent/conv_nn_(simple_reward)- -10.00max- -10.00avg- -10.00min-1633080230'
+# MODEL_PATH = 'models/DQNAgent/64x2- -34.00max- -98.60avg--141.00min-1632304191'
+MODEL_PATH = 'models/SACAgent/conv_nn_(simple_reward)_stacked-policy_net- -10.00max- -10.00avg- -10.00min-1633120695'
 
 if __name__ == '__main__':
 
@@ -62,11 +62,8 @@ if __name__ == '__main__':
 
             if mode == 1:
                 # Predict an action based on current observation space
-                print(current_state)
                 qs = model.predict(np.array(current_state).reshape(-1, *current_state.shape))[0]
-                print(qs)
-                # action = np.argmax(qs)
-                action = 1
+                action = np.argmax(qs)
 
             elif mode == 2:
                 action_dist = agent.policy_net.get_action(current_state).detach()
@@ -85,6 +82,10 @@ if __name__ == '__main__':
             # Measure step time, append to a deque, then print mean FPS for last 60 frames, q values and taken action
             frame_time = time.time() - step_start
             fps_counter.append(frame_time)
+
+            if mode == 1:
+                action_dist = qs
+
             print(f'Agent: {len(fps_counter)/sum(fps_counter):>4.1f} FPS | Action: [{action_dist[0]:>5.2f}, {action_dist[1]:>5.2f}, {action_dist[2]:>5.2f}] {action}')
 
         # Destroy an actor at end of episode

@@ -32,7 +32,7 @@ import carla
 SHOW_PREVIEW = False
 IM_WIDTH = 640
 IM_HEIGHT = 480
-EPISODE_LENGTH = 12
+EPISODE_LENGTH = 30
 
 
 # ==============================================================================
@@ -133,6 +133,8 @@ class CarEnv:
 
         # TODO: change the conditions!
 
+        rrt_mode = False  # debugging
+
         # if we had a crash
         if len(self.collision_hist) != 0:
             done = True
@@ -149,8 +151,24 @@ class CarEnv:
             reward = -5
 
         else:
-            done = False
-            reward = 10  # encourage the vehicle's performance! # TODO: test noturnv3!
+            # reaching the goal (sampled path)
+            path = [[6, 10], [7.07, 9.92], [10.06, 9.71], [10.06, 9.71], [11.76, 2.93], [11.76],
+                    [8, 2.93], [1.06, 2.80], [1.06, 2.80], [0, 0]]
+            immediate_goal = path[-2]
+            final_goal = path[0]
+
+            t = self.world.get_spectator().get_transform()
+            x, y, z = t.location.x, t.location.y, t.location.z
+            if ((abs(x - final_goal[0]) ** 2 + abs(y - final_goal[1]) ** 2) ** 0.5) < 0.5 and rrt_mode:
+                reward = 200
+                done = True
+            elif ((abs(x - immediate_goal[0]) ** 2 + abs(y - immediate_goal[1]) ** 2) ** 0.5) < 0.5 and rrt_mode:
+                reward = 20
+                path = path[:-1]
+
+            else:
+                done = False
+                reward = 10  # encourage the vehicle's performance! # TODO: test noturnv3!
 
         #  terminating the episode (no reward)
         if self.episode_start + EPISODE_LENGTH < time.time():

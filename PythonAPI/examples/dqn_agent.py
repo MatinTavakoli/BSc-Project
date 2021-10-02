@@ -42,13 +42,17 @@ DISCOUNT = 0.99
 class DQNAgent:
 
     def __init__(self):
+        self.num_of_episodes = NUM_OF_EPISODES
+        self.min_reward = MIN_REWARD
+        self.model_name = MODEL_NAME
+
         self.model = self.create_model()
         self.target_model = self.create_model()
         self.target_model.set_weights(self.model.get_weights())
 
         self.replay_memory = deque(maxlen=REPLAY_MEMORY_SIZE)
 
-        self.tensorboard = ModifiedTensorBoard(log_dir='logs/{}-{}-{}-NEGATIVE{}'.format(MODEL_NAME, int(time.time()), NUM_OF_EPISODES, abs(MIN_REWARD)))
+        self.tensorboard = ModifiedTensorBoard(log_dir='logs/{}/{}-{}-{}-NEGATIVE{}'.format(self.__class__.__name__, MODEL_NAME, int(time.time()), NUM_OF_EPISODES, abs(MIN_REWARD)))
         self.target_update_counter = 0
         self.graph = tf.compat.v1.get_default_graph()
 

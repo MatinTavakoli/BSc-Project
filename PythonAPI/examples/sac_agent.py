@@ -42,7 +42,7 @@ MIN_REPLAY_MEMORY_SIZE = 2_000
 # TRAINING_BATCH_SIZE = MINIBATCH_SIZE // 4
 UPDATE_TARGET_NETWORK_EVERY = 5
 
-MODEL_NAME = "conv_nn_(simple_reward)"
+MODEL_NAME = "conv_nn_(simple_reward)_stacked"
 NUM_OF_EPISODES = 10
 MINIBATCH_SIZE = 32
 MIN_REWARD = -100
@@ -90,7 +90,7 @@ class SACAgent:
 
         self.replay_memory = ReplayMemory(REPLAY_MEMORY_SIZE)
         self.tensorboard = ModifiedTensorBoard(
-            log_dir='logs/{}-{}-{}-NEGATIVE{}'.format(MODEL_NAME, int(time.time()), self.num_of_episodes,
+            log_dir='logs/{}/{}-{}-{}-NEGATIVE{}'.format(self.__class__.__name__, MODEL_NAME, int(time.time()), self.num_of_episodes,
                                                       abs(MIN_REWARD)))
 
     def update(self, minibatch_size, gamma=0.99, soft_tau=1e-2, ):
