@@ -168,7 +168,7 @@ class CarEnv:
 
             else:
                 done = False
-                reward = 10  # encourage the vehicle's performance! # TODO: test noturnv3!
+                reward = 10  # encourage the vehicle's performance!
 
         #  terminating the episode (no reward)
         if self.episode_start + EPISODE_LENGTH < time.time():
