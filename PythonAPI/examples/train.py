@@ -72,7 +72,8 @@ if __name__ == "__main__":
 
     env = CarEnv()
 
-    mode = 2
+    mode = 2  # mode = 1 for DQN, mode = 2 for SAC
+    rrt_mode = False  # rrt_mode = False for SAC, rrt_mode = True for combined SAC and RRT
 
     if mode == 1:
 
@@ -146,7 +147,7 @@ if __name__ == "__main__":
 
     elif mode == 2:
 
-        agent = SACAgent()
+        agent = SACAgent(rrt_mode=rrt_mode)
         stack_train = False
 
         # loading pretrained models from previous runs
@@ -163,14 +164,21 @@ if __name__ == "__main__":
             episode_reward = 0
             step = 1
 
+            if not rrt_mode:
+                state = env.reset()
+            else:
+                state, x, y = env.reset(rrt_mode=True)
 
-            state, x, y = env.reset()
             done = False
             episode_start = time.time()
 
             while True:
                 if np.random.random() > EPSILON:
-                    action_dist = agent.policy_net.get_action(state, x, y).detach()
+                    if not rrt_mode:
+                        action_dist = agent.policy_net.get_action(state).detach()
+                    else:
+                        action_dist = agent.policy_net.get_action(state, rrt_mode=True, x_loc=x, y_loc=y).detach()
+
                     action = np.argmax(action_dist)
                     # print('action selected from policy')
 
@@ -179,16 +187,20 @@ if __name__ == "__main__":
                     # print('action selected randomly')
                     time.sleep(1 / FPS)
 
-                next_state, reward, done, next_x, next_y = env.step(action)
-
-                agent.replay_memory.push(state, action, reward, next_state, done, x, y, next_x, next_y)
+                if not rrt_mode:
+                    next_state, reward, done, _ = env.step(action)
+                    agent.replay_memory.push(state, action, reward, next_state, done)
+                else:
+                    next_state, reward, done, next_x, next_y = env.step(action, rrt_mode=True)
+                    agent.replay_memory.push(state, action, reward, next_state, done, rrt_mode=True, x=x, y=y, next_x=next_x, next_y=next_y)
 
                 state = next_state
-                x, y = next_x, next_y
+                if rrt_mode:
+                    x, y = next_x, next_y
                 episode_reward += reward
 
                 if len(agent.replay_memory) > agent.minibatch_size:
-                    agent.update(agent.minibatch_size)
+                    agent.update(agent.minibatch_size, rrt_mode=rrt_mode)
 
                 if done:
                     break

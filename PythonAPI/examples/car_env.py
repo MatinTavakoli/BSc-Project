@@ -93,7 +93,7 @@ class CarEnv:
 
         # spawn vehicle
         # self.vehicle_spawn_point = random.choice(self.world.get_map().get_spawn_points())
-        self.vehicle_spawn_point = self.world.get_map().get_spawn_points()[30]  # training on a specific spawn point
+        self.vehicle_spawn_point = self.world.get_map().get_spawn_points()[28]  # training on a specific spawn point
         self.vehicle = self.world.spawn_actor(self.model, self.vehicle_spawn_point)
         self.vehicle.set_autopilot(False)  # making sure its not in autopilot!
         self.actor_list.append(self.vehicle)
