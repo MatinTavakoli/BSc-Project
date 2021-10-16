@@ -34,6 +34,15 @@ IM_WIDTH = 640
 IM_HEIGHT = 480
 EPISODE_LENGTH = 30
 
+global PATH
+
+PATH = [[-88.49, 123.10, 0.05],
+        [- 89.93, 127.98, 0.039],
+        [- 92.79, 129.80, 0.00],
+        [- 96.67, 131.51, - 0.00],
+        [- 103.74, 131.87, - 0.00],
+        [- 110.07, 131.99, - 0.00]]
+
 
 # ==============================================================================
 # -- env class -----------------------------------------------------------------
@@ -55,12 +64,36 @@ class CarEnv:
 
         self.model = self.blueprint_library.filter("bmw")[0]  # fetch the first model of bmw
 
-    def reset(self):
+        # # reaching the goal (sampled path)
+        # # path = [[6, 10], [7.07, 9.92], [10.06, 9.71], [10.06, 9.71], [11.76, 2.93], [11.76],
+        # #         [8, 2.93], [1.06, 2.80], [1.06, 2.80], [0, 0]]
+        #
+        # # go right
+        # self.path = [[-88.49, 123.10, 0.05],
+        #              [- 89.93, 127.98, 0.039],
+        #              [- 92.79, 129.80, 0.00],
+        #              [- 96.67, 131.51, - 0.00],
+        #              [- 103.74, 131.87, - 0.00],
+        #              [- 110.07, 131.99, - 0.00]]
+        #
+        # # # go straight
+        # # self.path = [[-88.15, 108.90, 0.28],
+        # #              [-88.15, 109.70, 0.27],
+        # #              [-88.13, 114.18, 0.21],
+        # #              [-88.10, 121.99, 0.13],
+        # #              [-88.06, 132.07, 0.10],
+        # #              [-88.01, 148.03, 0.07],
+        # #              [-87.98, 154.91, 0.08]]
+        self.immediate_goal = PATH[0]
+        self.final_goal = PATH[-1]
+
+    def reset(self, rrt_mode=False):
         self.collision_hist = []
         self.actor_list = []
 
         # spawn vehicle
-        self.vehicle_spawn_point = random.choice(self.world.get_map().get_spawn_points())
+        # self.vehicle_spawn_point = random.choice(self.world.get_map().get_spawn_points())
+        self.vehicle_spawn_point = self.world.get_map().get_spawn_points()[30]  # training on a specific spawn point
         self.vehicle = self.world.spawn_actor(self.model, self.vehicle_spawn_point)
         self.vehicle.set_autopilot(False)  # making sure its not in autopilot!
         self.actor_list.append(self.vehicle)
@@ -92,6 +125,12 @@ class CarEnv:
         self.episode_start = time.time()
         self.vehicle.apply_control(carla.VehicleControl(throttle=0.0, brake=0.0))
 
+        t = self.vehicle.get_transform()
+        x, y, z = t.location.x, t.location.y, t.location.z
+
+        if rrt_mode:
+            return self.front_camera, x, y
+
         return self.front_camera
 
     def process_camera_sensory_data(self, data):
@@ -106,7 +145,7 @@ class CarEnv:
     def process_collision_sensory_data(self, event):
         self.collision_hist.append(event)  # add the accident to the list
 
-    def step(self, action):
+    def step(self, action, rrt_mode=False):
 
         # baseline actions
         # if action == 0:
@@ -133,8 +172,6 @@ class CarEnv:
 
         # TODO: change the conditions!
 
-        rrt_mode = False  # debugging
-
         # if we had a crash
         if len(self.collision_hist) != 0:
             done = True
@@ -151,27 +188,29 @@ class CarEnv:
             reward = -5
 
         else:
-            # reaching the goal (sampled path)
-            path = [[6, 10], [7.07, 9.92], [10.06, 9.71], [10.06, 9.71], [11.76, 2.93], [11.76],
-                    [8, 2.93], [1.06, 2.80], [1.06, 2.80], [0, 0]]
-            immediate_goal = path[-2]
-            final_goal = path[0]
-
             t = self.world.get_spectator().get_transform()
             x, y, z = t.location.x, t.location.y, t.location.z
-            if ((abs(x - final_goal[0]) ** 2 + abs(y - final_goal[1]) ** 2) ** 0.5) < 0.5 and rrt_mode:
+            if ((abs(x - self.final_goal[0]) ** 2 + abs(y - self.final_goal[1]) ** 2) ** 0.5) < 2 and rrt_mode:
                 reward = 200
                 done = True
-            elif ((abs(x - immediate_goal[0]) ** 2 + abs(y - immediate_goal[1]) ** 2) ** 0.5) < 0.5 and rrt_mode:
+            elif ((abs(x - self.immediate_goal[0]) ** 2 + abs(
+                    y - self.immediate_goal[1]) ** 2) ** 0.5) < 2 and rrt_mode:
                 reward = 20
-                path = path[:-1]
+                PATH = PATH[1:]  # update global path variable
+                self.immediate_goal = PATH[0]  # update immediate goal
+                self.final_goal = PATH[-1]  # update final goal
 
             else:
                 done = False
                 reward = 10  # encourage the vehicle's performance!
 
-        #  terminating the episode (no reward)
-        if self.episode_start + EPISODE_LENGTH < time.time():
-            done = True
+            #  terminating the episode (no reward)
+            if self.episode_start + EPISODE_LENGTH < time.time():
+                done = True
+
+        if rrt_mode:
+            t = self.vehicle.get_transform()
+            x, y, z = t.location.x, t.location.y, t.location.z
+            return self.front_camera, reward, done, x, y
 
         return self.front_camera, reward, done, None

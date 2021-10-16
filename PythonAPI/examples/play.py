@@ -11,8 +11,9 @@ from sac_agent import *
 from train import MEMORY_FRACTION
 
 
-# MODEL_PATH = 'models/DQNAgent/64x2- -34.00max- -98.60avg--141.00min-1632304191'
-MODEL_PATH = 'models/SACAgent/conv_nn_(simple_reward)_stacked-policy_net- -10.00max- -10.00avg- -10.00min-1633120695'
+MODEL_PATH = 'models/DQNAgent/64x2- -34.00max- -98.60avg--141.00min-1632304191'
+# MODEL_PATH = 'models/SACAgent/conv_nn_(simple_reward)_stacked-policy_net- -10.00max- -10.00avg- -10.00min-1633114880'
+# MODEL_PATH = 'models/SACAgent/conv_nn_global(simple_reward)-policy_net--200.00max--200.00avg--200.00min-1633459279'
 
 if __name__ == '__main__':
 
@@ -26,14 +27,15 @@ if __name__ == '__main__':
     # For agent speed measurements - keeps last 20 frametimes
     fps_counter = deque(maxlen=20)
 
-    mode = 2
+    mode = 2  # mode = 1 for DQN, mode = 2 for SAC
+    rrt_mode = False  # rrt_mode = False for SAC, rrt_mode = True for combined SAC and RRT
 
     # Load the model
     if mode == 1:
         model = load_model(MODEL_PATH)
     elif mode == 2:
         agent = SACAgent()
-        # agent.policy_net.load_state_dict(torch.load(MODEL_PATH))
+        agent.policy_net.load_state_dict(torch.load(MODEL_PATH))
 
     # Initialize predictions - first prediction takes longer as of initialization that has to be done
     # It's better to do a first prediction then before we start iterating over episode steps
@@ -45,7 +47,13 @@ if __name__ == '__main__':
         print('Restarting episode')
 
         # Reset environment and get initial state
-        current_state = env.reset()
+        if mode == 1:
+            current_state = env.reset()
+        elif mode == 2:
+            if rrt_mode:
+                current_state, current_x, current_y = env.reset(rrt_mode=True)
+            else:
+                current_state = env.reset()
         env.collision_hist = []
 
         done = False
@@ -66,14 +74,22 @@ if __name__ == '__main__':
                 action = np.argmax(qs)
 
             elif mode == 2:
-                action_dist = agent.policy_net.get_action(current_state).detach()
+                if rrt_mode:
+                    action_dist = agent.policy_net.get_action(current_state, rrt_mode=True, x_loc=current_x, y_loc=current_y).detach()
+                else:
+                    action_dist = agent.policy_net.get_action(current_state).detach()
                 action = np.argmax(action_dist)
 
             # Step environment (additional flag informs environment to not break an episode by time limit)
-            new_state, reward, done, _ = env.step(action)
+            if rrt_mode:
+                new_state, reward, done, new_x, new_y = env.step(action, rrt_mode=True)
+            else:
+                new_state, reward, done, _ = env.step(action)
 
             # Set current step for next loop iteration
             current_state = new_state
+            if rrt_mode:
+                current_x, current_y = new_x, new_y
 
             # If done - agent crashed, break an episode
             if done:

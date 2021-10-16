@@ -30,7 +30,7 @@ from tqdm import tqdm
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
 
-from car_env import CarEnv
+from car_env import CarEnv, PATH
 
 # ==============================================================================
 # -- constants -----------------------------------------------------------------
@@ -42,7 +42,7 @@ MIN_REPLAY_MEMORY_SIZE = 2_000
 # TRAINING_BATCH_SIZE = MINIBATCH_SIZE // 4
 UPDATE_TARGET_NETWORK_EVERY = 5
 
-MODEL_NAME = "conv_nn_(simple_reward)_stacked"
+MODEL_NAME = "conv_nn_global(simple_reward)"
 NUM_OF_EPISODES = 10
 MINIBATCH_SIZE = 32
 MIN_REWARD = -100
@@ -90,10 +90,12 @@ class SACAgent:
 
         self.replay_memory = ReplayMemory(REPLAY_MEMORY_SIZE)
         self.tensorboard = ModifiedTensorBoard(
-            log_dir='logs/{}/{}-{}-{}-NEGATIVE{}'.format(self.__class__.__name__, MODEL_NAME, int(time.time()), self.num_of_episodes,
-                                                      abs(MIN_REWARD)))
+            log_dir='logs/{}/{}-{}-{}-NEGATIVE{}'.format(self.__class__.__name__, MODEL_NAME, int(time.time()),
+                                                         self.num_of_episodes,
+                                                         abs(MIN_REWARD)))
 
     def update(self, minibatch_size, gamma=0.99, soft_tau=1e-2, ):
+        # state, action, reward, next_state, done, x, y, next_x, next_y = self.replay_memory.sample(minibatch_size)
         state, action, reward, next_state, done = self.replay_memory.sample(minibatch_size)
 
         state = torch.FloatTensor(state).to(device).permute(0, 3, 1, 2)  # permutation needed for conv2d
@@ -101,22 +103,30 @@ class SACAgent:
         action = torch.IntTensor(action).to(device).type(torch.int64)
         reward = torch.FloatTensor(reward).unsqueeze(1).to(device)
         done = torch.FloatTensor(np.float32(done)).unsqueeze(1).to(device)
+        # x = torch.FloatTensor(x).unsqueeze(1).to(device)
+        # y = torch.FloatTensor(y).unsqueeze(1).to(device)
+        # next_x = torch.FloatTensor(next_x).unsqueeze(1).to(device)
+        # next_y = torch.FloatTensor(next_y).unsqueeze(1).to(device)next_x, next_y
 
+        # predicted_q_value1 = self.soft_q_net1(state, action, x, y)
         predicted_q_value1 = self.soft_q_net1(state, action)
         predicted_q_value1 = predicted_q_value1.gather(1, action.view(-1, 1)).view(-1)
+        # predicted_q_value2 = self.soft_q_net2(state, action, x, y)
         predicted_q_value2 = self.soft_q_net2(state, action)
         predicted_q_value2 = predicted_q_value2.gather(1, action.view(-1, 1)).view(-1)
 
+        # predicted_value = self.value_net(state, x, y).reshape(self.minibatch_size)
         predicted_value = self.value_net(state).reshape(self.minibatch_size)
 
+        # new_action, log_prob, epsilon, mean, log_std = self.policy_net.evaluate(state, x, y)
         new_action, log_prob, epsilon, mean, log_std = self.policy_net.evaluate(state)
-        new_action = (
-                             new_action + 1) / 2  # due to tanh activation, need to bring it in the (0, 1) interval (TODO: is this a bunch of bull?!)
+        new_action = (new_action + 1) / 2  # due to tanh activation, need to bring it in the (0, 1) interval (TODO: is this a bunch of bull?!)
         new_sample_actions = torch.multinomial(new_action, 1,
                                                replacement=True)  # sampling from float action probabilities
         log_prob = log_prob.gather(1, new_sample_actions.view(-1, 1)).view(-1)
 
         # Training Q Function
+        # target_value = self.target_value_net(next_state, next_x, next_y)
         target_value = self.target_value_net(next_state)
         target_q_value = (reward + (1 - done) * gamma * target_value).reshape(self.minibatch_size)
 
@@ -131,11 +141,8 @@ class SACAgent:
         self.soft_q_optimizer2.step()
 
         # Training Value Function
-        predicted_new_q_value = torch.min(self.soft_q_net1(state, new_action), self.soft_q_net2(state, new_action)).gather(1,
-                                                                                                                 new_sample_actions.view(
-                                                                                                                     -1,
-                                                                                                                     1)).view(
-            -1)
+        # predicted_new_q_value = torch.min(self.soft_q_net1(state, new_action, x, y), self.soft_q_net2(state, new_action, x, y)).gather(1, new_sample_actions.view(-1, 1)).view(-1)
+        predicted_new_q_value = torch.min(self.soft_q_net1(state, new_action), self.soft_q_net2(state, new_action)).gather(1, new_sample_actions.view(-1, 1)).view(-1)
         target_value_func = (predicted_new_q_value - log_prob)
 
         value_loss = self.value_criterion(predicted_value, target_value_func.detach())
@@ -177,14 +184,17 @@ class ValueNetwork(nn.Module):
         # self.conv2x_fully = nn.Linear(1123584, 1)  # TODO: don't hardcode this shit!
         # self.conv3x_stride2_fully = nn.Linear(247616, 1)  # TODO: don't hardcode this shit!
         self.conv3x_stride4_fully = nn.Linear(2560, 1)  # TODO: don't hardcode this shit!
+        # self.conv3x_stride5_fully1 = nn.Linear(512, 5)  # TODO: don't hardcode this shit!
+        # self.conv3x_stride5_fully2 = nn.Linear(8, 1)  # TODO: don't hardcode this shit!
 
+    # def forward(self, state, x_loc, y_loc):
     def forward(self, state):
         # x = F.relu(self.linear1(state))
         # x = F.relu(self.linear2(x))
         # x = self.linear3(x)
 
         # CNN
-        avgpool = nn.AvgPool2d(kernel_size=(5, 5), stride=(4, 4), padding=0)
+        avgpool = nn.AvgPool2d(kernel_size=(5, 5), stride=(5, 5), padding=0)
 
         x = F.relu(self.conv1(state))
         x = avgpool(x)
@@ -198,6 +208,12 @@ class ValueNetwork(nn.Module):
         x = torch.flatten(x, 1)
 
         x = self.conv3x_stride4_fully(x)
+
+        # x = self.conv3x_stride5_fully1(x)
+        # global_planner_one_hot = calculate_one_hot_batch(x_loc, y_loc, MINIBATCH_SIZE)
+        # x = torch.cat([x, global_planner_one_hot], 1)
+        #
+        # x = self.conv3x_stride5_fully2(x)
 
         return x
 
@@ -221,7 +237,10 @@ class SoftQNetwork(nn.Module):
         # self.conv2x_fully = nn.Linear(1123584, num_actions)  # TODO: don't hardcode this shit!
         # self.conv3x_stride2_fully = nn.Linear(247616, num_actions)  # TODO: don't hardcode this shit!
         self.conv3x_stride4_fully = nn.Linear(2560, num_actions)  # TODO: don't hardcode this shit!
+        # self.conv3x_stride5_fully1 = nn.Linear(512, 5)  # TODO: don't hardcode this shit!
+        # self.conv3x_stride5_fully2 = nn.Linear(8, num_actions)  # TODO: don't hardcode this shit!
 
+    # def forward(self, state, action, x_loc, y_loc):
     def forward(self, state, action):
         # original
         # x = F.relu(self.linear1(state))
@@ -229,7 +248,7 @@ class SoftQNetwork(nn.Module):
         # x = self.linear3(x)
 
         # CNN
-        avgpool = nn.AvgPool2d(kernel_size=(5, 5), stride=(4, 4), padding=0)
+        avgpool = nn.AvgPool2d(kernel_size=(5, 5), stride=(5, 5), padding=0)
 
         x = F.relu(self.conv1(state))
         x = avgpool(x)
@@ -243,6 +262,12 @@ class SoftQNetwork(nn.Module):
         x = torch.flatten(x, 1)
 
         x = self.conv3x_stride4_fully(x)
+
+        # x = self.conv3x_stride5_fully1(x)
+        # global_planner_one_hot = calculate_one_hot_batch(x_loc, y_loc, MINIBATCH_SIZE)
+        # x = torch.cat([x, global_planner_one_hot], 1)
+        #
+        # x = self.conv3x_stride5_fully2(x)
 
         return x
 
@@ -276,10 +301,23 @@ class PolicyNetwork(nn.Module):
         # self.conv3x_stride2_mean_fully = nn.Linear(247616, num_actions)  # TODO: don't hardcode this shit!
         # self.conv3x_stride2_log_std_fully = nn.Linear(247616, num_actions)  # TODO: don't hardcode this shit!
 
+        # Simple SAC
         self.conv3x_stride4_mean_fully = nn.Linear(2560, num_actions)  # TODO: don't hardcode this shit!
         self.conv3x_stride4_log_std_fully = nn.Linear(2560, num_actions)  # TODO: don't hardcode this shit!
 
-    def forward(self, state):
+        # SAC + RRT (old)
+        # self.conv3x_stride4_mean_fully1 = nn.Linear(2560, 10)  # TODO: don't hardcode this shit!
+        # self.conv3x_stride4_mean_fully2 = nn.Linear(13, num_actions)  # TODO: don't hardcode this shit!
+        # self.conv3x_stride4_log_std_fully1 = nn.Linear(2560, 10)  # TODO: don't hardcode this shit!
+        # self.conv3x_stride4_log_std_fully2 = nn.Linear(13, num_actions)  # TODO: don't hardcode this shit!
+
+        # # SAC + RRT (new)
+        # self.conv3x_stride4_mean_fully1 = nn.Linear(512, 5)  # TODO: don't hardcode this shit!
+        # self.conv3x_stride4_mean_fully2 = nn.Linear(8, num_actions)  # TODO: don't hardcode this shit!
+        # self.conv3x_stride4_log_std_fully1 = nn.Linear(512, 5)  # TODO: don't hardcode this shit!
+        # self.conv3x_stride4_log_std_fully2 = nn.Linear(8, num_actions)  # TODO: don't hardcode this shit!
+
+    def forward(self, state, rrt_mode=False, x_loc=None, y_loc=None):
         # x = F.relu(self.linear1(state))
         # x = F.relu(self.linear2(x))
         #
@@ -301,15 +339,30 @@ class PolicyNetwork(nn.Module):
 
         x = torch.flatten(x, 1)
 
-        mean = self.conv3x_stride4_mean_fully(x)
-        log_std = self.conv3x_stride4_log_std_fully(x)
+        if rrt_mode:
+            global_planner_one_hot = calculate_one_hot_batch(x_loc, y_loc, state.shape[0])
+
+            mean = self.conv3x_stride4_mean_fully1(x)
+            mean = torch.cat([mean, global_planner_one_hot], 1)
+            mean = self.conv3x_stride4_mean_fully2(mean)
+
+            log_std = self.conv3x_stride4_log_std_fully1(x)
+            log_std = torch.cat([log_std, global_planner_one_hot], 1)
+            log_std = self.conv3x_stride4_log_std_fully2(log_std)
+
+        else:
+            mean = self.conv3x_stride4_mean_fully(x)
+            log_std = self.conv3x_stride4_log_std_fully(x)
 
         log_std = torch.clamp(log_std, self.log_std_min, self.log_std_max)
 
         return mean, log_std
 
-    def evaluate(self, state, epsilon=1e-6):
-        mean, log_std = self.forward(state)
+    def evaluate(self, state, rrt_mode=False, x_loc=None, y_loc=None, epsilon=1e-6):
+        if rrt_mode:
+            mean, log_std = self.forward(state, rrt_mode=rrt_mode, x_loc=x_loc, y_loc=y_loc)
+        else:
+            mean, log_std = self.forward(state)
         std = log_std.exp()
 
         normal = Normal(0, 1)
@@ -318,9 +371,13 @@ class PolicyNetwork(nn.Module):
         log_prob = Normal(mean, std).log_prob(mean + std * z.to(device)) - torch.log(1 - action.pow(2) + epsilon)
         return action, log_prob, z, mean, log_std
 
-    def get_action(self, state):
+    def get_action(self, state, rrt_mode=False, x_loc=None, y_loc=None):
         state = torch.FloatTensor(state).unsqueeze(0).to(device).permute(0, 3, 1, 2)  # permutation needed for conv2d
-        mean, log_std = self.forward(state)
+        if rrt_mode:
+            print('nigga')
+            mean, log_std = self.forward(state, rrt_mode=rrt_mode, x_loc=x_loc, y_loc=y_loc)
+        else:
+            mean, log_std = self.forward(state)
         std = log_std.exp()
 
         normal = Normal(0, 1)
@@ -329,6 +386,7 @@ class PolicyNetwork(nn.Module):
 
         action = action.cpu()  # .detach().cpu().numpy()
         return action[0]
+
 
 # ==============================================================================
 # -- replay buffer class --------------------------------------------------------
@@ -340,16 +398,43 @@ class ReplayMemory:
         self.buffer = []
         self.position = 0
 
+    # def push(self, state, action, reward, next_state, done, x, y, next_x, next_y):
     def push(self, state, action, reward, next_state, done):
         if len(self.buffer) < self.capacity:
             self.buffer.append(None)
+        # self.buffer[self.position] = (state, action, reward, next_state, done, x, y, next_x, next_y)
         self.buffer[self.position] = (state, action, reward, next_state, done)
         self.position = (self.position + 1) % self.capacity
 
     def sample(self, minibatch_size):
         batch = random.sample(self.buffer, minibatch_size)
+        # state, action, reward, next_state, done, x, y, next_x, next_y = map(np.stack, zip(*batch))
         state, action, reward, next_state, done = map(np.stack, zip(*batch))
+        # return state, action, reward, next_state, done, x, y, next_x, next_y
         return state, action, reward, next_state, done
 
     def __len__(self):
         return len(self.buffer)
+
+
+def calculate_one_hot_batch(x_loc, y_loc, minibatch_size):
+    immediate_goal = PATH[0]
+    im_goal_x = torch.tensor([immediate_goal[0]])
+    im_goal_y = torch.tensor([immediate_goal[1]])
+
+    right_x_one_hot = torch.where(x_loc > im_goal_x, 1, 0)
+    right_y_one_hot = torch.where(y_loc < im_goal_y, 1, 0)
+    right_one_hot = torch.logical_and(right_x_one_hot, right_y_one_hot)
+
+    left_x_one_hot = torch.where(x_loc < im_goal_x, 1, 0)
+    left_y_one_hot = torch.where(y_loc > im_goal_y, 1, 0)
+    left_one_hot = torch.logical_and(left_x_one_hot, left_y_one_hot)
+
+    check1 = torch.where(right_one_hot, 0, 1)
+    check2 = torch.where(left_one_hot, 0, 1)
+
+    straight_one_hot = torch.logical_and(check1, check2)
+
+    one_hot = torch.cat([right_one_hot.reshape(minibatch_size, 1), straight_one_hot.reshape(minibatch_size, 1), left_one_hot.reshape(minibatch_size, 1)], 1)
+
+    return one_hot

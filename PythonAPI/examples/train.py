@@ -147,7 +147,7 @@ if __name__ == "__main__":
     elif mode == 2:
 
         agent = SACAgent()
-        stack_train = True
+        stack_train = False
 
         # loading pretrained models from previous runs
         if stack_train:
@@ -162,13 +162,15 @@ if __name__ == "__main__":
             agent.tensorboard.step = episode
             episode_reward = 0
             step = 1
-            state = env.reset()
+
+
+            state, x, y = env.reset()
             done = False
             episode_start = time.time()
 
             while True:
                 if np.random.random() > EPSILON:
-                    action_dist = agent.policy_net.get_action(state).detach()
+                    action_dist = agent.policy_net.get_action(state, x, y).detach()
                     action = np.argmax(action_dist)
                     # print('action selected from policy')
 
@@ -177,11 +179,12 @@ if __name__ == "__main__":
                     # print('action selected randomly')
                     time.sleep(1 / FPS)
 
-                next_state, reward, done, _ = env.step(action)
+                next_state, reward, done, next_x, next_y = env.step(action)
 
-                agent.replay_memory.push(state, action, reward, next_state, done)
+                agent.replay_memory.push(state, action, reward, next_state, done, x, y, next_x, next_y)
 
                 state = next_state
+                x, y = next_x, next_y
                 episode_reward += reward
 
                 if len(agent.replay_memory) > agent.minibatch_size:
